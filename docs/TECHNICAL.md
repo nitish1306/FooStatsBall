@@ -46,6 +46,7 @@ Static mode in `static/js/dashboard.js`:
   5. Download link, plus a Share / Save button (`navigator.share` with a File) where supported, e.g. iOS.
 
   Cuts snap to 4 s segment edges.
+- **Team comparison:** `computeTeamStats` + `renderTeamCompare` build the overview from events + `analytics.players`; tackles/interceptions go to the winning team, shots to the team last in possession.
 - **Layout:** desktop ≥1100 px fixed-height grid; 768–1099 px page scrolls, video + radar side by side; <768 px single column (video → timeline → radar → events → analytics), toggles in a swipeable row, export as a bottom sheet.
 
 ## R2 auth
