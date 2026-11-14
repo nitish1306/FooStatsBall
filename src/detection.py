@@ -13,7 +13,7 @@ CUSTOM_BOTSORT_CONFIG = str(Path(__file__).parent.parent / "sports_botsort.yaml"
 class DetectionTracker:
     """YOLO11 sports-tuned detection + BoT-SORT tracking pipeline."""
 
-    def __init__(self, model_path: str = "yolo11n.pt", device: str = "cuda", imgsz: int = 1280):
+    def __init__(self, model_path: str = "yolo11m.pt", device: str = "cuda", imgsz: int = 1280):
         """
         Args:
             model_path: Path to YOLO model weights.

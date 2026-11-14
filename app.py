@@ -276,7 +276,7 @@ async def _run_processing(start_frame: int, end_frame: Optional[int], device: st
                 start_frame=start_frame,
                 end_frame=end_frame,
                 device=device,
-                imgsz=1280,
+                imgsz=1920,
                 progress_callback=progress_cb,
                 two_kits_only=two_kits_only,
             )
