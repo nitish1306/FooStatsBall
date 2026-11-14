@@ -834,7 +834,10 @@ function updatePlayerScorecard(val) {
     const kitEl = document.getElementById('metric-kit');
     const kitTitle = document.getElementById('metric-kit-title');
 
+    document.getElementById('team-compare').style.display = val === 'all' ? '' : 'none';
+    document.getElementById('player-metrics').style.display = val === 'all' ? 'none' : '';
     if (val === 'all') {
+        renderTeamCompare();
         let totalD = 0;
         let maxSpd = 0;
         let totalSp = 0;
@@ -863,6 +866,71 @@ function updatePlayerScorecard(val) {
             fetchHeatmap(val);
         }
     }
+}
+
+// Shots carry no team: credit the team that last had the ball before the shot.
+function teamOfEvent(ev, prevTeam) {
+    if (ev.type === 'tackle' || ev.type === 'interception') return ev.team_id == null ? null : 1 - ev.team_id;
+    if (ev.type === 'shot') return prevTeam;
+    return ev.team_id ?? null;
+}
+
+function computeTeamStats() {
+    const a = telemetryData.analytics || {};
+    const t = [0, 1].map(() => ({ shots: 0, passes: 0, lost: 0, tackles: 0, interceptions: 0, carries: 0, passM: 0, dist: 0, sprints: 0, top: 0 }));
+    let last = null;
+    [...(telemetryData.events || [])].sort((x, y) => x.start_frame - y.start_frame).forEach(ev => {
+        const team = teamOfEvent(ev, last);
+        if (team !== 0 && team !== 1) return;
+        const s = t[team];
+        if (ev.type === 'pass_completed') { s.passes++; s.passM += ev.distance_m || 0; }
+        else if (ev.type === 'dribble') s.carries++;
+        else if (ev.type === 'shot') s.shots++;
+        else if (ev.type === 'tackle' || ev.type === 'interception') {
+            s[ev.type === 'tackle' ? 'tackles' : 'interceptions']++;
+            t[1 - team].lost++;
+        }
+        last = team;
+    });
+    Object.values(a.players || {}).forEach(p => {
+        const s = t[p.team_id];
+        if (!s) return;
+        s.dist += p.distance_m || 0; s.sprints += p.sprints || 0; s.top = Math.max(s.top, p.top_speed_kmh || 0);
+    });
+    const poss = a.possession || {};
+    const pct = (s) => s.passes + s.lost ? Math.round(100 * s.passes / (s.passes + s.lost)) : null;
+    const rows = [
+        ['Possession', poss.team_0, poss.team_1, v => v == null ? '-' : `${Math.round(v)}%`],
+        ['Shots', t[0].shots, t[1].shots],
+        ['Passes', t[0].passes, t[1].passes],
+        ['Pass accuracy', pct(t[0]), pct(t[1]), v => v == null ? '-' : `${v}%`],
+        ['Avg pass length', t[0].passes ? t[0].passM / t[0].passes : null, t[1].passes ? t[1].passM / t[1].passes : null, v => v == null ? '-' : `${v.toFixed(1)} m`],
+        ['Tackles won', t[0].tackles, t[1].tackles],
+        ['Interceptions', t[0].interceptions, t[1].interceptions],
+        ['Ball lost', t[0].lost, t[1].lost, null, true],
+        ['Carries', t[0].carries, t[1].carries],
+        ['Distance covered', t[0].dist / 1000, t[1].dist / 1000, v => `${v.toFixed(2)} km`],
+        ['Sprints', t[0].sprints, t[1].sprints],
+        ['Top speed', t[0].top, t[1].top, v => `${v.toFixed(1)} km/h`],
+    ];
+    return rows.map(([label, l, r, fmt, lowerBetter]) => ({ label, l, r, fmt: fmt || (v => v == null ? '-' : String(v)), lowerBetter: !!lowerBetter }));
+}
+
+function renderTeamCompare() {
+    const el = document.getElementById('team-compare');
+    const dot = (i) => `<i style="background:rgb(${TEAM_RGB[i].join(',')})"></i>`;
+    const head = `<div class="tc-head"><span>${dot(0)}${esc(TEAM_NAMES[0])}</span><span>${esc(TEAM_NAMES[1])}${dot(1)}</span></div>`;
+    el.innerHTML = head + computeTeamStats().map(({ label, l, r, fmt, lowerBetter }) => {
+        const a = l ?? 0, b = r ?? 0, tot = a + b;
+        const win = a === b ? 0 : (a > b) !== lowerBetter ? -1 : 1;
+        const lw = tot ? (100 * a / tot) : 50;
+        return `<div class="tc-row">
+            <span class="tc-val${win < 0 ? ' lead' : ''}">${fmt(l)}</span>
+            <span class="tc-label">${label}</span>
+            <span class="tc-val right${win > 0 ? ' lead' : ''}">${fmt(r)}</span>
+            <div class="tc-bar"><div style="width:${lw}%;background:rgb(${TEAM_RGB[0].join(',')});opacity:${win > 0 ? 0.4 : 1}"></div><div style="width:${100 - lw}%;background:rgb(${TEAM_RGB[1].join(',')});opacity:${win < 0 ? 0.4 : 1}"></div></div>
+        </div>`;
+    }).join('') + `<p class="help tc-note">Shots credited to the team last in possession. Tracked players only.</p>`;
 }
 
 async function fetchHeatmap(target) {
