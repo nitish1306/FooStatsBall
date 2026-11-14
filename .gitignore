@@ -1,0 +1,38 @@
+# Environments & Virtual Envs
+venv/
+.venv/
+env/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Model Checkpoints & Large Assets
+models/
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Video Files & Raw Media (prevent exceeding GitHub 100MB limit)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.jpg
+*.jpeg
+*.png
+!static/css/*
+!static/js/*
+
+# Telemetry outputs & temp files
+output/
+output/*
+!output/.gitkeep
+
+# Environment variables
+.env
+.env.*

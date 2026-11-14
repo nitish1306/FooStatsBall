@@ -1,0 +1,19 @@
+# Ultralytics BoT-SORT configuration tuned for fixed-camera sports tracking
+# Overrides pedestrian defaults to enforce football player object permanence
+
+tracker_type: botsort
+track_high_thresh: 0.35      # 1st-stage association threshold
+track_low_thresh: 0.1        # 2nd-stage association threshold for motion-blurred sprinters
+new_track_thresh: 0.65       # High spawn threshold to prevent false-positive phantom tracks
+track_buffer: 160            # Extended memory (~5.3s at 30fps / ~2.7s at 60fps) for occluded players
+match_thresh: 0.8            # Matching threshold for association
+fuse_score: True             # Fuse detection confidence with similarity
+
+# Fixed camera optimizations
+gmc_method: none             # Stationary camera: disable camera motion compensation (saves CPU, avoids jitter)
+
+# Appearance Re-ID
+proximity_thresh: 0.5
+appearance_thresh: 0.25
+with_reid: True              # Use appearance embeddings for identity persistence during crosses
+

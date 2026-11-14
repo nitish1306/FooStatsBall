@@ -1,0 +1,11 @@
+ultralytics
+supervision
+opencv-python-headless
+numpy
+scipy
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+aiofiles
+

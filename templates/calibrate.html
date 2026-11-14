@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitch Calibration — FooStatsBall</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <a href="/" class="back-link">← Back</a>
+        <h1>⚽ Pitch Calibration</h1>
+        <p class="subtitle">Click pitch landmarks on the video frame, then map them to the pitch diagram</p>
+    </header>
+
+    <main class="calibrate-container">
+        <!-- Controls bar -->
+        <div class="calibrate-controls">
+            <label>
+                Match Video:
+                <select id="video-select"></select>
+            </label>
+            <label>
+                Pitch Preset:
+                <select id="pitch-preset">
+                    <option value="7v7" selected>7v7 (90×45m)</option>
+                    <option value="11v11">11v11 (105×68m)</option>
+                    <option value="5v5">5v5 (40×25m)</option>
+                    <option value="futsal">Futsal (40×20m)</option>
+                </select>
+            </label>
+            <span id="point-count">Points: 0 / 4 minimum</span>
+            <button onclick="undoLastPoint()" class="btn btn-secondary" id="undo-btn" disabled>Undo Last</button>
+            <button onclick="clearAllPoints()" class="btn btn-secondary">Clear All</button>
+            <button onclick="saveCalibration()" class="btn btn-primary" id="save-btn" disabled>
+                Compute Homography & Save
+            </button>
+        </div>
+
+        <div class="calibrate-panels">
+            <!-- Left: Video frame with click targets -->
+            <div class="panel">
+                <h3>Video Frame 0 — Click a landmark</h3>
+                <div class="frame-container" id="frame-container">
+                    <canvas id="frame-canvas"></canvas>
+                </div>
+            </div>
+
+            <!-- Right: Pitch diagram with landmark selector -->
+            <div class="panel">
+                <h3>Pitch Diagram — Select the corresponding landmark</h3>
+                <div class="pitch-container">
+                    <canvas id="pitch-canvas" width="600" height="400"></canvas>
+                </div>
+                <div id="landmark-selector" class="landmark-selector" style="display:none;">
+                    <p>What did you click? Select the landmark:</p>
+                    <div id="landmark-buttons" class="landmark-buttons"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Points table -->
+        <div class="points-table-container">
+            <h3>Calibration Points</h3>
+            <table id="points-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Landmark</th>
+                        <th>Pixel (x, y)</th>
+                        <th>Pitch (x, y) meters</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="points-tbody"></tbody>
+            </table>
+        </div>
+
+        <div id="result-msg" class="result-msg"></div>
+    </main>
+
+    <script src="/static/js/calibrate.js"></script>
+</body>
+</html>
+

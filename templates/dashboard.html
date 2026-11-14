@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tactical Dashboard — FooStatsBall</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="dashboard-body">
+    <header class="dashboard-header">
+        <a href="/" class="back-link">← Home</a>
+        <h1>⚽ FooStatsBall — Tactical Dashboard</h1>
+        <div class="header-controls">
+            <label><input type="checkbox" id="toggle-bbox" checked> Boxes</label>
+            <label><input type="checkbox" id="toggle-ids" checked> IDs</label>
+            <label><input type="checkbox" id="toggle-ball-trail" checked> Ball Trail</label>
+            <label><input type="checkbox" id="toggle-voronoi"> Space Control (Voronoi)</label>
+            <label><input type="checkbox" id="toggle-heatmap"> Heatmap</label>
+            <button class="export-nav-btn" onclick="openExportModal()">🎬 Export Highlights</button>
+        </div>
+    </header>
+
+    <main class="dashboard-container">
+        <!-- Top row: Video + Radar -->
+        <div class="dashboard-top">
+            <!-- Video Player -->
+            <div class="pane video-pane">
+                <div class="pane-header">
+                    <span>Match Video</span>
+                    <span id="frame-counter">Frame: 0</span>
+                </div>
+                <div class="video-wrapper">
+                    <video id="match-video" src="/video" preload="auto" controls></video>
+                    <canvas id="overlay-canvas"></canvas>
+                </div>
+            </div>
+
+            <!-- 2D Tactical Radar -->
+            <div class="pane radar-pane">
+                <div class="pane-header">
+                    <span>2D Tactical Radar</span>
+                    <span id="radar-time">0:00</span>
+                </div>
+                <div class="radar-wrapper">
+                    <canvas id="radar-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle: Master Interactive Timeline Bar with Pins -->
+        <div class="master-timeline-pane">
+            <div class="timeline-pins-wrapper" id="timeline-pins-track">
+                <!-- Event marker pins injected here -->
+            </div>
+            <div class="timeline-bar">
+                <div class="playback-controls">
+                    <button onclick="skipFrames(-10)" title="Back 10 frames">⏪</button>
+                    <button onclick="skipFrames(-1)" title="Back 1 frame">◀</button>
+                    <button onclick="togglePlay()" id="play-btn" title="Play/Pause">▶</button>
+                    <button onclick="skipFrames(1)" title="Forward 1 frame">▶</button>
+                    <button onclick="skipFrames(10)" title="Forward 10 frames">⏩</button>
+                    <select id="speed-select" onchange="setSpeed(this.value)">
+                        <option value="0.25">0.25×</option>
+                        <option value="0.5">0.5×</option>
+                        <option value="1" selected>1×</option>
+                        <option value="2">2×</option>
+                    </select>
+                </div>
+                <div class="scrubber-container">
+                    <input type="range" id="scrubber" min="0" max="100" value="0" step="1">
+                    <div class="time-display">
+                        <span id="current-time">0:00</span> / <span id="total-time">0:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom row: Event Feed (Left) & Analytics Panel (Right) -->
+        <div class="dashboard-bottom">
+            <!-- Event Feed -->
+            <div class="event-feed-pane">
+                <div class="event-feed-header">
+                    <span>⚡ Match Event Feed</span>
+                    <div class="event-filters">
+                        <button class="filter-chip active" onclick="filterEvents('all')">All</button>
+                        <button class="filter-chip" onclick="filterEvents('pass_completed')">🟢 Passes</button>
+                        <button class="filter-chip" onclick="filterEvents('turnover')">🔴 Turnovers</button>
+                        <button class="filter-chip" onclick="filterEvents('dribble')">🔵 Carries</button>
+                        <button class="filter-chip" onclick="filterEvents('shot')">🟡 Shots</button>
+                    </div>
+                </div>
+                <div class="event-table-scroll">
+                    <table class="event-table" id="event-feed-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Event Type</th>
+                                <th>Actor</th>
+                                <th>Target</th>
+                                <th>Dist</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="event-feed-tbody">
+                            <!-- Injected rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Analytics & Physical Scorecard Panel -->
+            <div class="analytics-pane">
+                <div class="analytics-header">
+                    <span>📊 Physical Workload & Match Analytics</span>
+                    <select id="analytics-player-select" onchange="updatePlayerScorecard(this.value)">
+                        <option value="all">Match Overview</option>
+                    </select>
+                </div>
+                <div class="analytics-content" id="analytics-content">
+                    <div class="metric-cards-grid">
+                        <div class="metric-card">
+                            <span class="metric-title">Team Possession</span>
+                            <span class="metric-val" id="metric-possession">🔴 0% | 🔵 100%</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-title">Distance Covered</span>
+                            <span class="metric-val" id="metric-distance">-</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-title">Top Sprint Speed</span>
+                            <span class="metric-val" id="metric-topspeed">-</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-title">Sprint Count (≥20 km/h)</span>
+                            <span class="metric-val" id="metric-sprints">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Phase 5: Export Highlights Modal -->
+    <div id="export-modal" class="modal" style="display:none;">
+        <div class="modal-card">
+            <h3>🎬 Export Video Highlight Reel</h3>
+            <p style="font-size:0.85rem;color:var(--text-dim);margin:0.5rem 0;">
+                Losslessly slice and concatenate key match moments using local FFmpeg.
+            </p>
+            <div style="margin:1rem 0;">
+                <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem;">Preset Reel:</label>
+                <select id="export-preset" style="width:100%;padding:0.4rem;background:var(--bg-dark);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+                    <option value="all_passes">All Passes & Turnovers</option>
+                    <option value="my_touches">All My Touches (Selected Player)</option>
+                    <option value="all_events">All Match Highlights</option>
+                </select>
+            </div>
+            <div id="export-feedback" style="font-size:0.85rem;margin-bottom:1rem;color:var(--accent);"></div>
+            <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
+                <button class="btn btn-secondary" onclick="closeExportModal()">Cancel</button>
+                <button class="btn btn-primary" id="start-export-btn" onclick="startExport()">Export Reel (FFmpeg)</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
+
