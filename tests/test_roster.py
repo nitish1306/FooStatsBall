@@ -64,3 +64,19 @@ def test_reattach_to_lost_teammate():
 def test_other_team_not_counted():
     fr = build(full_team(3, {9: (50, 60, lambda t, f: player(t, f, 40, team=1))}))
     assert 9 in ids(apply_roster(fr, 3, FPS, 60, 40))
+
+
+from src.roster import drop_spectators
+
+
+def test_spectators_dropped_players_kept():
+    tracks = {
+        1: (0, 199, lambda t, f: player(t, f, 10 + f * 0.1)),                       # moving player
+        2: (0, 199, lambda t, f: {**player(t, f, 30), "pitch_xy": [30.0, 2.0]}),   # static at touchline
+        3: (0, 199, lambda t, f: {**player(t, f, 30), "pitch_xy": [30.0, 41.0]}),  # off pitch
+        4: (0, 199, lambda t, f: {**player(t, f, 20), "bbox": [0, 300, 90, 380]}),  # seated / wide box
+        5: (0, 199, lambda t, f: {**player(t, f, 1), "pitch_xy": [1.0, 20.0]}),    # static keeper on goal line
+        6: (0, 60, lambda t, f: {**player(t, f, 30), "pitch_xy": [30.0, 1.0]}),    # brief throw-in pause
+    }
+    out = drop_spectators(build(tracks), FPS, 60, 40)
+    assert ids(out) == {1, 5, 6}

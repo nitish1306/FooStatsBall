@@ -66,7 +66,8 @@ Spawns at edges or with `active(T) < N` → normal new slot.
 - `src/roster.py` + `tests/test_roster.py` (6 pass). Runs after team classification.
 - Unique IDs 43 (was 50); frames with >24 people 29% (was 40%).
 - Still median 24 on screen vs 22: long-lived people near far touchline / bench present from frame 1
-  (not spawns, so roster rule skips them). Next: off-pitch/bench filter.
+  (not spawns, so roster rule skips them).
+- Added `drop_spectators` (off-pitch / wide box / static at touchline). Dry-run on sample: median 21 on screen, >24 people 0%, keepers 6 + 22 kept. Jittery far-side 14/104 still in.
 - Phase 0 (hand-label GT) + 4 (dashboard badge) not done.
 
 ## Resolved

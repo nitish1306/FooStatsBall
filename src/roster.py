@@ -107,3 +107,36 @@ def apply_roster(
         frames[k]["players"] = [p for p in frames[k]["players"]
                                 if p["tracker_id"] not in drop]
     return frames
+
+
+def drop_spectators(
+    frames: dict,
+    fps: float,
+    pitch_length: float,
+    pitch_width: float,
+    touchline_m: float = 4.0,
+    max_extent_m: float = 6.0,
+    min_static_sec: float = 5.0,
+    max_aspect: float = 0.8,
+) -> dict:
+    """Removes tracks that are not players: median position off the pitch, a wide box (seated people,
+    groups), or standing still near a touchline (bench, tents). Goal lines are left alone for keepers."""
+    tracks: dict[int, list] = {}
+    for fd in frames.values():
+        for p in fd["players"]:
+            tracks.setdefault(p["tracker_id"], []).append(p)
+    drop = set()
+    for tid, ps in tracks.items():
+        xy = np.array([p["pitch_xy"] for p in ps], dtype=float)
+        b = np.array([p["bbox"] for p in ps], dtype=float)
+        mx, my = np.median(xy, axis=0)
+        aspect = np.median((b[:, 2] - b[:, 0]) / np.maximum(b[:, 3] - b[:, 1], 1e-6))
+        off = mx < 0 or my < 0 or mx > pitch_length or my > pitch_width
+        extent = float(np.hypot(*np.ptp(xy, axis=0)))
+        static_at_line = (min(my, pitch_width - my) <= touchline_m and extent < max_extent_m
+                          and len(ps) >= min_static_sec * fps)
+        if off or aspect > max_aspect or static_at_line:
+            drop.add(tid)
+    for fd in frames.values():
+        fd["players"] = [p for p in fd["players"] if p["tracker_id"] not in drop]
+    return frames

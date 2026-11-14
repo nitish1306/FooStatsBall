@@ -239,7 +239,8 @@ def process_video(
             p["possession_team"] = gk if gk is not None else team_id
 
     # Roster prior: drop phantom spawns once a team is full; re-attach lost team-mates
-    from src.roster import apply_roster
+    from src.roster import apply_roster, drop_spectators
+    cleaned_frames = drop_spectators(cleaned_frames, fps, pitch_len, pitch_wid)
     cleaned_frames = apply_roster(cleaned_frames, calibrator.players_per_team, fps, pitch_len, pitch_wid)
 
     # Phase 3: Structured football event detection (passes, turnovers, dribbles, shots)
