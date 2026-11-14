@@ -18,6 +18,7 @@ def stitch_and_clean_trajectories(
     min_track_len: int = 15,
     max_stitch_dt_sec: float = 3.0,
     max_sprint_speed_mps: float = 9.0,
+    max_body_heights_per_sec: float = 6.0,
     pitch_length: float = 90.0,
     pitch_width: float = 45.0,
     touchline_buffer: float = 0.5,
@@ -77,6 +78,8 @@ def stitch_and_clean_trajectories(
             "last_f": last_f,
             "start_pos": start_pos,
             "end_pos": end_pos,
+            "start_box": occ[first_f].get("bbox"),
+            "end_box": occ[last_f].get("bbox"),
             "len": len(frames)
         })
 
@@ -125,7 +128,15 @@ def stitch_and_clean_trajectories(
             dy = candidate["start_pos"][1] - curr_end_pos[1]
             dist = np.sqrt(dx * dx + dy * dy)
 
-            if dist <= max_reachable_dist and dist < min_distance:
+            # Near the camera homography error inflates metres; also accept a pixel gate
+            # measured in body heights (a sprinter covers <= ~6 heights/s on screen).
+            reachable = dist <= max_reachable_dist
+            eb, sb = curr_track.get("end_box"), candidate.get("start_box")
+            if not reachable and eb and sb:
+                h = max(eb[3] - eb[1], sb[3] - sb[1])
+                px = np.hypot((sb[0] + sb[2] - eb[0] - eb[2]) / 2, sb[3] - eb[3])
+                reachable = px <= max_body_heights_per_sec * h * max(dt_sec, 0.2)
+            if reachable and dist < min_distance:
                 min_distance = dist
                 best_match_idx = j
 
@@ -146,6 +157,7 @@ def stitch_and_clean_trajectories(
                 # Update meta of target track
                 curr_track["last_f"] = cand_track["last_f"]
                 curr_track["end_pos"] = cand_track["end_pos"]
+                curr_track["end_box"] = cand_track["end_box"]
                 curr_track["len"] += cand_track["len"]
 
     track_history = {tid: occ for tid, occ in track_history.items() if len(occ) >= min_track_len}

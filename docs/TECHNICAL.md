@@ -11,7 +11,7 @@
    - Applies to a track lost for up to 1.5 s.
    - Crops around its last box and runs a low-confidence detection (conf 0.08, imgsz 320).
    - A match keeps the same ID and is flagged `redetected`.
-3. **Stitcher** (`src/track_stitcher.py`): merges fragments by motion and kit similarity, then drops micro-tracks (<15 frames). Stitching runs before the drop so fragments left after collisions survive.
+3. **Stitcher** (`src/track_stitcher.py`): merges fragments when within 9 m/s on the pitch OR 6 body-heights/s on screen (homography inflates metres near the camera), then drops micro-tracks (<15 frames). Stitching runs before the drop so fragments left after collisions survive.
 4. **Smoothing:** Savitzky-Golay on trajectories; ball gaps are interpolated.
 5. **Homography:** calibration points → RANSAC homography; pixel foot point → pitch metres.
 6. **Teams:** torso crop with grass masked → colour clustering; goalkeepers picked by goal-line proximity and colour.
