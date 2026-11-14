@@ -5,10 +5,14 @@
 
 // Pitch presets (must match backend)
 const PITCH_PRESETS = {
-    '11v11': { length: 105, width: 68 },
-    '7v7':   { length: 90,  width: 45 },
-    '5v5':   { length: 40,  width: 25 },
-    'futsal':{ length: 40,  width: 20 },
+    '5v5': { length: 40, width: 25, players: 5 },
+    '6v6': { length: 50, width: 30, players: 6 },
+    '7v7': { length: 60, width: 40, players: 7 },
+    '8v8': { length: 70, width: 45, players: 8 },
+    '9v9': { length: 75, width: 50, players: 9 },
+    '10v10': { length: 90, width: 60, players: 10 },
+    '11v11': { length: 105, width: 68, players: 11 },
+    'futsal': { length: 40, width: 20, players: 5 },
 };
 
 // Standard landmarks (relative to pitch dims)
@@ -36,7 +40,7 @@ function getLandmarks(L, W) {
     };
 }
 
-let currentPreset = '7v7';
+let currentPreset = '8v8';
 let pitchDims = PITCH_PRESETS[currentPreset];
 let landmarks = getLandmarks(pitchDims.length, pitchDims.width);
 let calibrationPoints = [];

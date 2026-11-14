@@ -38,10 +38,14 @@ STANDARD_LANDMARKS = {
 
 # Smaller pitch presets
 PITCH_PRESETS = {
-    "11v11": {"length": 105.0, "width": 68.0},
-    "7v7": {"length": 90.0, "width": 45.0},
-    "5v5": {"length": 40.0, "width": 25.0},
-    "futsal": {"length": 40.0, "width": 20.0},
+    "5v5": {"length": 40.0, "width": 25.0, "players": 5},
+    "6v6": {"length": 50.0, "width": 30.0, "players": 6},
+    "7v7": {"length": 60.0, "width": 40.0, "players": 7},
+    "8v8": {"length": 70.0, "width": 45.0, "players": 8},
+    "9v9": {"length": 75.0, "width": 50.0, "players": 9},
+    "10v10": {"length": 90.0, "width": 60.0, "players": 10},
+    "11v11": {"length": 105.0, "width": 68.0, "players": 11},
+    "futsal": {"length": 40.0, "width": 20.0, "players": 5},
 }
 
 
@@ -53,6 +57,8 @@ class PitchCalibrator:
         self.inverse_homography = None
         self.pitch_length = PITCH_LENGTH
         self.pitch_width = PITCH_WIDTH
+        self.format = None
+        self.players_per_team = None
         self.calibration_points = []  # list of (pixel_xy, pitch_xy) pairs
 
     def set_pitch_dimensions(self, length: float, width: float):
@@ -65,6 +71,7 @@ class PitchCalibrator:
         if preset in PITCH_PRESETS:
             dims = PITCH_PRESETS[preset]
             self.set_pitch_dimensions(dims["length"], dims["width"])
+            self.format, self.players_per_team = preset, dims["players"]
         else:
             raise ValueError(f"Unknown preset: {preset}. Available: {list(PITCH_PRESETS.keys())}")
 
@@ -158,6 +165,8 @@ class PitchCalibrator:
         data = {
             "pitch_length": self.pitch_length,
             "pitch_width": self.pitch_width,
+            "format": self.format,
+            "players_per_team": self.players_per_team,
             "homography_matrix": self.homography_matrix.tolist() if self.homography_matrix is not None else None,
             "calibration_points": [
                 {"pixel": list(p), "pitch": list(w)}
@@ -171,6 +180,8 @@ class PitchCalibrator:
         data = json.loads(Path(path).read_text())
         self.pitch_length = data["pitch_length"]
         self.pitch_width = data["pitch_width"]
+        self.format = data.get("format")
+        self.players_per_team = data.get("players_per_team")
         self.reference_frame = int(data.get("reference_frame", 0))
         self.calibration_points = [
             (tuple(p["pixel"]), tuple(p["pitch"]))

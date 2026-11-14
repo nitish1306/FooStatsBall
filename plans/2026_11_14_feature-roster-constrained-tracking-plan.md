@@ -56,11 +56,18 @@ Spawns at edges or with `active(T) < N` → normal new slot.
 
 ## Phases
 - [ ] 0. Hand-label ground truth for sample (5 players × 900 frames) + metric script
-- [ ] 1. Format presets table + calibration UI + saved `players_per_team`
-- [ ] 2. `src/roster.py` slot assignment + tests (synthetic tracklets: overlap, gaps, extras)
-- [ ] 3. Wire into pipeline; `raw_id`, `extra` flag; analytics skip extras
+- [x] 1. Format presets table + calibration UI + saved `players_per_team`
+- [x] 2. `src/roster.py` slot assignment + tests (synthetic tracklets: overlap, gaps, extras)
+- [x] 3. Wire into pipeline (`raw_id`/`extra` flag deferred — drops + re-attach only)
 - [ ] 4. Dashboard: count badge, extras greyed
 - [ ] 5. Re-run sample, compare metrics before/after, republish
+
+## Results (sample, 11v11, frames 1109–2008)
+- `src/roster.py` + `tests/test_roster.py` (6 pass). Runs after team classification.
+- Unique IDs 43 (was 50); frames with >24 people 29% (was 40%).
+- Still median 24 on screen vs 22: long-lived people near far touchline / bench present from frame 1
+  (not spawns, so roster rule skips them). Next: off-pitch/bench filter.
+- Phase 0 (hand-label GT) + 4 (dashboard badge) not done.
 
 ## Resolved
 - Sizes: table above (7v7 → 60×40; sample re-calibrated with its format). Editable L×W kept.

@@ -12,7 +12,8 @@
    - Crops around its last box and runs a low-confidence detection (conf 0.08, imgsz 320).
    - A match keeps the same ID and is flagged `redetected`.
 3. **Stitcher** (`src/track_stitcher.py`): merges fragments when within 9 m/s on the pitch OR 6 body-heights/s on screen (homography inflates metres near the camera), then drops micro-tracks (<15 frames). Stitching runs before the drop so fragments left after collisions survive.
-4. **Smoothing:** Savitzky-Golay on trajectories; ball gaps are interpolated.
+4. **Roster prior** (`src/roster.py`, after team split): uses `players_per_team` from the calibration format (5v5…11v11, default 8v8). A track that appears away from the touchlines is re-attached to a team-mate lost ≤3 s ago; if none fits and its team is already full, it is dropped when its box sits inside another player's or it lasts <1 s. Soft cap: subs at the edges are kept.
+5. **Smoothing:** Savitzky-Golay on trajectories; ball gaps are interpolated.
 5. **Homography:** calibration points → RANSAC homography; pixel foot point → pitch metres.
 6. **Teams:** torso crop with grass masked → colour clustering; goalkeepers picked by goal-line proximity and colour.
 7. **Events** (`src/event_detector.py`): possession state machine → passes, turnovers, carries. A deflection/deceleration filter stops a ball that only brushed a player from counting as a reception.
