@@ -34,6 +34,20 @@ Viewer URL: `<R2_PUBLIC_URL>/app/dashboard.html?m=<slug>`
 - [x] 4. Site shell upload (index.html, app/) + matches.json update
 - [x] 5. Publish Fixedcam sample, verify in browser via r2.dev URL, commit
 
+## Layout v2 (per-folder, user request)
+One bucket folder per match, everything inside it:
+```
+<folder>/<raw video>.mp4
+<folder>/index.html            dashboard (share this)
+<folder>/assets/               dashboard.js, style.css, favicon.svg
+<folder>/data/meta.json, data/frames/cNNNN.json
+<folder>/video/index.m3u8, init.mp4, seg_*.m4s
+```
+Share: `<R2_PUBLIC_URL>/<folder>/index.html` (r2.dev serves no default index -> `/` and `/<folder>/` 404).
+Run: `python tools/publish_match.py "<video>.mp4" --folder <folder>`
+- [x] Publisher + dashboard switched; old top-level keys (index.html, matches.json, app/, matches/) deleted
+- [x] Sample republished; all keys 200; local browser check OK
+
 ## Results
 - Live: `https://pub-7f25dcbabb54468c9b5d1699690cb526.r2.dev/` -> Fixedcam sample
 - Upload: 101 MB HLS (232 segs) + meta 1.1 MB + 2 frame chunks (3.5 MB raw, gzip on wire)

@@ -15,8 +15,9 @@ let frameCache = {};
 
 // ========== Static mode (published to R2, no server) ==========
 const STATIC = !!window.FOOSTATS_STATIC;
-const MATCH_SLUG = new URLSearchParams(location.search).get('m');
-const MATCH_BASE = STATIC ? `../matches/${encodeURIComponent(MATCH_SLUG || '')}/` : '';
+// Static page lives at <bucket>/<folder>/index.html; data/ and video/ sit beside it.
+const MATCH_SLUG = decodeURIComponent(location.pathname.split('/').slice(-2, -1)[0] || 'match');
+const MATCH_BASE = './';
 const chunkLoads = {};
 
 function ensureChunk(frame) {
@@ -25,7 +26,7 @@ function ensureChunk(frame) {
     const idx = Math.floor(frame / chunk_frames);
     if (!chunks.includes(idx)) return Promise.resolve();
     if (!chunkLoads[idx]) {
-        chunkLoads[idx] = fetch(`${MATCH_BASE}frames/c${String(idx).padStart(4, '0')}.json`)
+        chunkLoads[idx] = fetch(`${MATCH_BASE}data/frames/c${String(idx).padStart(4, '0')}.json`)
             .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
             .then(frames => { Object.assign(frameCache, frames); })
             .catch(e => { delete chunkLoads[idx]; console.error('chunk load', idx, e); });
@@ -117,10 +118,10 @@ const toggleHeatmap = document.getElementById('toggle-heatmap');
 async function init() {
     // Load video info
     if (STATIC) {
-        const resp = MATCH_SLUG ? await fetch(`${MATCH_BASE}meta.json`) : null;
+        const resp = await fetch(`${MATCH_BASE}data/meta.json`).catch(() => null);
         if (!resp || !resp.ok) {
             document.body.insertAdjacentHTML('afterbegin',
-                '<div style="padding:1rem;background:#7f1d1d;color:#fff">Match not found. Open it from the match list.</div>');
+                '<div style="padding:1rem;background:#7f1d1d;color:#fff">Match data not found next to this page.</div>');
             return;
         }
         telemetryData = await resp.json();
