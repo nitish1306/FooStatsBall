@@ -171,6 +171,7 @@ class PitchCalibrator:
         data = json.loads(Path(path).read_text())
         self.pitch_length = data["pitch_length"]
         self.pitch_width = data["pitch_width"]
+        self.reference_frame = int(data.get("reference_frame", 0))
         self.calibration_points = [
             (tuple(p["pixel"]), tuple(p["pitch"]))
             for p in data["calibration_points"]
@@ -194,12 +195,15 @@ def extract_frame(video_path: str, frame_number: int = 0) -> np.ndarray:
 def get_video_info(video_path: str) -> dict:
     """Get basic video metadata."""
     cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     info = {
         "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
         "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-        "fps": cap.get(cv2.CAP_PROP_FPS),
+        "fps": fps,
         "total_frames": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-        "duration_seconds": cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS),
+        "duration_seconds": cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps,
     }
     cap.release()
     return info

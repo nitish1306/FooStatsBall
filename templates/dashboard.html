@@ -82,11 +82,11 @@
                 <div class="event-feed-header">
                     <span>⚡ Match Event Feed</span>
                     <div class="event-filters">
-                        <button class="filter-chip active" onclick="filterEvents('all')">All</button>
-                        <button class="filter-chip" onclick="filterEvents('pass_completed')">🟢 Passes</button>
-                        <button class="filter-chip" onclick="filterEvents('turnover')">🔴 Turnovers</button>
-                        <button class="filter-chip" onclick="filterEvents('dribble')">🔵 Carries</button>
-                        <button class="filter-chip" onclick="filterEvents('shot')">🟡 Shots</button>
+                        <button class="filter-chip active" onclick="filterEvents(this.dataset.f, this)" data-f="all">All</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="pass_completed">🟢 Passes</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="turnover">🔴 Turnovers</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="dribble">🔵 Carries</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="shot">🟡 Shots</button>
                     </div>
                 </div>
                 <div class="event-table-scroll">

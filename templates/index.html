@@ -37,7 +37,9 @@
                             <label>
                                 Device:
                                 <select id="device-select">
+                                    <option value="auto" selected>Auto (CUDA / Apple MPS / CPU)</option>
                                     <option value="cuda">GPU (CUDA)</option>
+                                    <option value="mps">Apple GPU (MPS)</option>
                                     <option value="cpu">CPU</option>
                                 </select>
                             </label>
@@ -104,8 +106,16 @@
 
                 // Poll status
                 const poll = setInterval(async () => {
-                    const sr = await fetch('/api/process/status');
-                    const sd = await sr.json();
+                    let sd;
+                    try {
+                        const sr = await fetch('/api/process/status');
+                        sd = await sr.json();
+                    } catch (e) {
+                        status.textContent = 'Lost connection to server: ' + e.message;
+                        clearInterval(poll);
+                        btn.disabled = false;
+                        return;
+                    }
                     status.textContent = sd.message;
                     if (!sd.running) {
                         clearInterval(poll);

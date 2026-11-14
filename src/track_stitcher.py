@@ -183,8 +183,13 @@ def stitch_and_clean_trajectories(
             if 0 < gap <= max_interp_gap:
                 for f_missing in range(frames[k] + 1, frames[k + 1]):
                     # Interpolated bbox from nearest anchor
-                    ref_bbox = occ[frames[k]]["bbox"]
+                    # Translate the anchor bbox with the interpolated foot so boxes don't freeze in gaps.
+                    anchor = occ[frames[k]]
                     interp_foot = [float(interp_px_x(f_missing)), float(interp_px_y(f_missing))]
+                    dx = interp_foot[0] - anchor["foot_pixel"][0]
+                    dy = interp_foot[1] - anchor["foot_pixel"][1]
+                    x1, y1, x2, y2 = anchor["bbox"]
+                    ref_bbox = [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
                     occ[f_missing] = {
                         "tracker_id": tid,
                         "bbox": ref_bbox,

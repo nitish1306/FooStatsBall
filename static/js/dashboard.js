@@ -13,9 +13,15 @@ let animFrameId = null;
 // Telemetry frame cache for fast lookup
 let frameCache = {};
 
-// Ball trail buffer
+// Ball trail length (frames looked back in the telemetry cache)
 const BALL_TRAIL_LENGTH = 60;
-let ballTrail = [];
+
+// Smooth rendering state
+const TEAM_RGB = { 0: [239, 83, 80], 1: [66, 165, 245], 2: [255, 213, 79] };
+let pitchLayer = null;      // cached static pitch drawing (offscreen)
+let heatmapLayer = null;    // cached heatmap bitmap (offscreen)
+let voronoiLayer = null;    // low-res Voronoi buffer, upscaled with smoothing
+let overlayFrame = 0;       // frame currently presented by the <video>
 
 // Personal player identity tag
 let myPlayerTrackId = null;
@@ -43,19 +49,23 @@ const toggleHeatmap = document.getElementById('toggle-heatmap');
 // ========== Init ==========
 async function init() {
     // Load video info
-    const infoResp = await fetch('/api/video-info');
+    const [infoResp, telResp] = await Promise.all([fetch('/api/video-info'), fetch('/api/telemetry')]);
+    if (!infoResp.ok || !telResp.ok) {
+        document.body.insertAdjacentHTML('afterbegin',
+            '<div style="padding:1rem;background:#7f1d1d;color:#fff">Failed to load video info or telemetry for the active video.</div>');
+        return;
+    }
     videoInfo = await infoResp.json();
-
-    // Load telemetry
-    const telResp = await fetch('/api/telemetry');
     telemetryData = await telResp.json();
 
     // Build frame cache
     frameCache = telemetryData.frames;
 
     // Set scrubber range
-    const startFrame = telemetryData.processing.start_frame;
-    const endFrame = telemetryData.processing.end_frame;
+    const processing = telemetryData.processing || {};
+    const frameKeys = Object.keys(frameCache).map(Number);
+    const startFrame = processing.start_frame ?? Math.min(...frameKeys);
+    const endFrame = processing.end_frame ?? Math.max(...frameKeys);
     scrubber.min = startFrame;
     scrubber.max = endFrame;
     scrubber.value = startFrame;
@@ -100,15 +110,15 @@ async function init() {
         seekToFrame(frame);
     });
 
-    // Video timeupdate for sync
-    video.addEventListener('timeupdate', () => {
-        if (isPlaying) {
-            const frame = Math.floor(video.currentTime * videoInfo.fps);
-            currentFrame = frame;
-            scrubber.value = frame;
+    // Redraw once a seek lands (covers native controls + scrubber)
+    video.addEventListener('seeked', () => {
+        if (!isPlaying) {
+            currentFrame = Math.round(video.currentTime * videoInfo.fps);
+            overlayFrame = currentFrame;
             updateDisplay();
         }
     });
+    startVideoFrameSync();
 
     // Toggle redraws
     toggleBbox.addEventListener('change', () => updateDisplay());
@@ -149,8 +159,8 @@ async function init() {
     }
 
     // Set canvas dimensions and position directly over the active video content
-    overlayCanvas.width = vw;
-    overlayCanvas.height = vh;
+    if (overlayCanvas.width !== vw) overlayCanvas.width = vw;
+    if (overlayCanvas.height !== vh) overlayCanvas.height = vh;
     overlayCanvas.style.width = `${renderW}px`;
     overlayCanvas.style.height = `${renderH}px`;
     overlayCanvas.style.left = `${offsetX}px`;
@@ -210,10 +220,25 @@ function setupRadar() {
         h = w / aspect;
     }
 
-    radarCanvas.width = Math.floor(w);
-    radarCanvas.height = Math.floor(h);
+    w = Math.floor(w);
+    h = Math.floor(h);
+    const dpr = window.devicePixelRatio || 1;
+    radarCanvas.width = Math.round(w * dpr);
+    radarCanvas.height = Math.round(h * dpr);
+    radarCanvas.style.width = `${w}px`;
+    radarCanvas.style.height = `${h}px`;
+    radarCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     radarCanvas._pitchScale = { w, h, L: pitch.length, W: pitch.width };
-    drawRadar(frameCache[String(currentFrame)]);
+
+    // Static pitch is drawn once into an offscreen canvas and blitted each frame
+    pitchLayer = document.createElement('canvas');
+    pitchLayer.width = radarCanvas.width;
+    pitchLayer.height = radarCanvas.height;
+    const pctx = pitchLayer.getContext('2d');
+    pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawPitchGraphics(pctx, w, h, pitch.length, pitch.width);
+
+    drawRadar(interpolatedFrame(currentFrame));
 }
 
 // ========== Playback ==========
@@ -234,22 +259,71 @@ function togglePlay() {
     }
 }
 
+// Radar runs at display refresh rate with sub-frame interpolation.
 function animLoop() {
     if (!isPlaying) return;
-    const frame = Math.floor(video.currentTime * videoInfo.fps);
+    const t = video.currentTime * videoInfo.fps;
+    const frame = Math.floor(t);
     if (frame !== currentFrame) {
         currentFrame = frame;
         scrubber.value = frame;
-        updateDisplay();
+        updateHud();
+    }
+    drawRadar(interpolatedFrame(t));
+    if (!hasVideoFrameCallback && overlayFrame !== frame) {
+        overlayFrame = frame;
+        drawOverlay(frameCache[String(frame)], frame);
     }
     animFrameId = requestAnimationFrame(animLoop);
 }
 
+// Overlay is locked to the exact frame the video presents (no drift vs boxes).
+const hasVideoFrameCallback = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+function startVideoFrameSync() {
+    if (!hasVideoFrameCallback) return;
+    const onFrame = (_now, meta) => {
+        const f = Math.round(meta.mediaTime * videoInfo.fps);
+        if (f !== overlayFrame) {
+            overlayFrame = f;
+            drawOverlay(frameCache[String(f)], f);
+        }
+        video.requestVideoFrameCallback(onFrame);
+    };
+    video.requestVideoFrameCallback(onFrame);
+}
+
 function seekToFrame(frame) {
     currentFrame = frame;
-    video.currentTime = frame / videoInfo.fps;
+    overlayFrame = frame;
+    // Seek to frame centre so the decoder lands on the intended frame
+    video.currentTime = (frame + 0.5) / videoInfo.fps;
     scrubber.value = frame;
     updateDisplay();
+}
+
+// ----- Sub-frame interpolation -----
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpArr = (a, b, t) => a.map((v, i) => lerp(v, b[i], t));
+
+function interpolatedFrame(t) {
+    const f0 = Math.floor(t);
+    const a = t - f0;
+    const A = frameCache[String(f0)];
+    const B = frameCache[String(f0 + 1)];
+    if (!A) return B || null;
+    if (!B || a <= 0) return A;
+
+    const next = new Map(B.players.map(p => [p.tracker_id, p]));
+    const players = A.players.map(p => {
+        const q = next.get(p.tracker_id);
+        if (!q) return p;
+        return { ...p, pitch_xy: lerpArr(p.pitch_xy, q.pitch_xy, a) };
+    });
+    let ball = A.ball;
+    if (A.ball && B.ball && A.ball.pitch_xy && B.ball.pitch_xy) {
+        ball = { ...A.ball, pitch_xy: lerpArr(A.ball.pitch_xy, B.ball.pitch_xy, a) };
+    }
+    return { ...A, players, ball };
 }
 
 function skipFrames(n) {
@@ -265,24 +339,22 @@ function setSpeed(speed) {
 }
 
 // ========== Rendering ==========
-function updateDisplay() {
-    setupOverlay();
-    const frameData = frameCache[String(currentFrame)];
-
-    // Update frame counter
+function updateHud() {
     frameCounter.textContent = `Frame: ${currentFrame}`;
     const timeSec = currentFrame / videoInfo.fps;
     currentTimeEl.textContent = formatTime(timeSec);
     radarTimeEl.textContent = formatTime(timeSec);
-
-    // Draw overlay
-    drawOverlay(frameData);
-
-    // Draw radar
-    drawRadar(frameData);
 }
 
-function drawOverlay(frameData) {
+function updateDisplay() {
+    if (!videoInfo || !telemetryData) return;
+    updateHud();
+    const frameData = frameCache[String(currentFrame)];
+    drawOverlay(frameData, currentFrame);
+    drawRadar(isPlaying ? interpolatedFrame(video.currentTime * videoInfo.fps) : frameData);
+}
+
+function drawOverlay(frameData, frameIdx = currentFrame) {
     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     if (!frameData) return;
 
@@ -307,10 +379,7 @@ function drawOverlay(frameData) {
             overlayCtx.ellipse((x1 + x2) / 2, y2, (x2 - x1) / 1.5, 8, 0, 0, Math.PI * 2);
             overlayCtx.strokeStyle = '#ffd700';
             overlayCtx.lineWidth = 3;
-            overlayCtx.shadowColor = '#ffd700';
-            overlayCtx.shadowBlur = 10;
             overlayCtx.stroke();
-            overlayCtx.shadowBlur = 0;
         }
 
         if (showIds && player.tracker_id >= 0) {
@@ -337,23 +406,23 @@ function drawOverlay(frameData) {
         overlayCtx.lineWidth = 2;
         overlayCtx.stroke();
 
-        // Ball trail
+        // Ball trail rebuilt from telemetry (stateless: correct after seeks), fading segments
         if (toggleBallTrail.checked) {
-            ballTrail.push([bx, by]);
-            if (ballTrail.length > BALL_TRAIL_LENGTH) ballTrail.shift();
-
-            overlayCtx.beginPath();
-            for (let i = 0; i < ballTrail.length; i++) {
-                const alpha = i / ballTrail.length;
-                overlayCtx.strokeStyle = `rgba(255, 213, 79, ${alpha * 0.6})`;
-                overlayCtx.lineWidth = 2;
-                if (i === 0) overlayCtx.moveTo(ballTrail[i][0], ballTrail[i][1]);
-                else overlayCtx.lineTo(ballTrail[i][0], ballTrail[i][1]);
+            const pts = [];
+            for (let f = Math.max(frameIdx - BALL_TRAIL_LENGTH, 0); f <= frameIdx; f++) {
+                const fd = frameCache[String(f)];
+                if (fd && fd.ball && fd.ball.pixel) pts.push(fd.ball.pixel);
             }
-            overlayCtx.stroke();
+            overlayCtx.lineWidth = 2;
+            overlayCtx.lineCap = 'round';
+            for (let i = 1; i < pts.length; i++) {
+                overlayCtx.strokeStyle = `rgba(255, 213, 79, ${(i / pts.length) * 0.6})`;
+                overlayCtx.beginPath();
+                overlayCtx.moveTo(pts[i - 1][0], pts[i - 1][1]);
+                overlayCtx.lineTo(pts[i][0], pts[i][1]);
+                overlayCtx.stroke();
+            }
         }
-    } else {
-        if (!isPlaying) ballTrail = [];
     }
 }
 
@@ -363,25 +432,25 @@ function drawRadar(frameData) {
     const s = canvas._pitchScale;
     if (!s) return;
 
-    // Clear and draw pitch
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawPitchGraphics(ctx, canvas.width, canvas.height, s.L, s.W);
+    const cw = s.w, chh = s.h;  // logical (CSS px) size; ctx is DPR-scaled
+
+    ctx.clearRect(0, 0, cw, chh);
+    if (pitchLayer) ctx.drawImage(pitchLayer, 0, 0, cw, chh);
+    else drawPitchGraphics(ctx, cw, chh, s.L, s.W);
 
     if (!frameData) return;
 
-    // Scale helpers
-    const px = (x) => (x / s.L) * canvas.width;
-    const py = (y) => (y / W_val) * canvas.height;
-    const W_val = s.W;
+    const px = (x) => (x / s.L) * cw;
+    const py = (y) => (y / s.W) * chh;
+    const frameNow = currentFrame;
 
-    // Phase 4: Draw Space Control (Voronoi) Layer
     if (toggleVoronoi && toggleVoronoi.checked && frameData.players.length >= 2) {
-        drawVoronoiSpace(ctx, canvas.width, canvas.height, frameData.players, s.L, s.W);
+        drawVoronoiSpace(ctx, cw, chh, frameData.players, s.L, s.W);
     }
 
-    // Phase 4: Draw Heatmap Layer
-    if (toggleHeatmap && toggleHeatmap.checked && activeHeatmapGrid) {
-        drawHeatmapLayer(ctx, canvas.width, canvas.height, activeHeatmapGrid);
+    if (toggleHeatmap && toggleHeatmap.checked && heatmapLayer) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(heatmapLayer, 0, 0, cw, chh);
     }
 
     // Draw players
@@ -422,31 +491,28 @@ function drawRadar(frameData) {
     if (toggleBallTrail.checked) {
         // Collect ball positions within a window of currentFrame
         const trail = [];
-        for (let f = Math.max(currentFrame - BALL_TRAIL_LENGTH, 0); f <= Math.min(currentFrame + 5, parseInt(scrubber.max)); f++) {
+        for (let f = Math.max(frameNow - BALL_TRAIL_LENGTH, 0); f <= frameNow; f++) {
             const fd = frameCache[String(f)];
             if (fd && fd.ball && fd.ball.pitch_xy) {
                 trail.push({ pt: fd.ball.pitch_xy, frame: f });
             }
         }
-        if (trail.length > 1) {
+        if (frameData.ball && frameData.ball.pitch_xy) trail.push({ pt: frameData.ball.pitch_xy });
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        for (let i = 1; i < trail.length; i++) {
+            ctx.strokeStyle = `rgba(255, 213, 79, ${0.15 + 0.85 * (i / trail.length)})`;
             ctx.beginPath();
-            ctx.moveTo(px(trail[0].pt[0]), py(trail[0].pt[1]));
-            for (let i = 1; i < trail.length; i++) {
-                ctx.lineTo(px(trail[i].pt[0]), py(trail[i].pt[1]));
-            }
-            ctx.strokeStyle = '#ffd54f';
-            ctx.lineWidth = 3;
-            ctx.shadowColor = '#ffd54f';
-            ctx.shadowBlur = 6;
+            ctx.moveTo(px(trail[i - 1].pt[0]), py(trail[i - 1].pt[1]));
+            ctx.lineTo(px(trail[i].pt[0]), py(trail[i].pt[1]));
             ctx.stroke();
-            ctx.shadowBlur = 0;
         }
     }
 
     // Phase 3: Draw active play vector arrows on 2D tactical radar
     const events = telemetryData.events || [];
     for (const ev of events) {
-        if (currentFrame >= ev.start_frame && currentFrame <= ev.end_frame) {
+        if (frameNow >= ev.start_frame && frameNow <= ev.end_frame) {
             if (ev.start_xy && ev.end_xy) {
                 const sx = px(ev.start_xy[0]);
                 const sy = py(ev.start_xy[1]);
@@ -622,8 +688,6 @@ function filterEvents(type, btnElement) {
     document.querySelectorAll('.filter-chip').forEach(btn => btn.classList.remove('active'));
     if (btnElement) {
         btnElement.classList.add('active');
-    } else if (window.event && window.event.target) {
-        window.event.target.classList.add('active');
     }
     renderEventFeed(type);
 }
@@ -643,7 +707,8 @@ function setupAnalyticsPanel() {
     Object.keys(players).sort((a,b) => parseInt(a) - parseInt(b)).forEach(tid => {
         const opt = document.createElement('option');
         opt.value = tid;
-        opt.textContent = `Player #${tid} (Team ${players[tid].team_id === 0 ? 'Red' : 'Blue'})`;
+        const tname = { 0: 'Red', 1: 'Blue' }[players[tid].team_id] ?? 'Other/GK';
+        opt.textContent = `Player #${tid} (Team ${tname})`;
         sel.appendChild(opt);
     });
 
@@ -653,8 +718,9 @@ function setupAnalyticsPanel() {
 
 function updatePlayerScorecard(val) {
     const analytics = telemetryData.analytics || {};
-    const poss = analytics.possession || { team_0: 0, team_1: 100 };
-    document.getElementById('metric-possession').textContent = `🔴 ${poss.team_0}% | 🔵 ${poss.team_1}%`;
+    const poss = analytics.possession;
+    document.getElementById('metric-possession').textContent =
+        (poss && poss.team_0 != null) ? `🔴 ${poss.team_0}% | 🔵 ${poss.team_1}%` : `n/a (ball seen ${poss?.ball_coverage_pct ?? 0}%)`;
 
     if (val === 'all') {
         let totalD = 0;
@@ -686,55 +752,63 @@ async function fetchHeatmap(target) {
         const resp = await fetch(`/api/heatmap/${target}`);
         const data = await resp.json();
         activeHeatmapGrid = data.grid;
+        heatmapLayer = buildHeatmapLayer(activeHeatmapGrid);
         if (toggleHeatmap && toggleHeatmap.checked) updateDisplay();
     } catch (e) {
         console.error("Heatmap fetch error:", e);
     }
 }
 
-function drawHeatmapLayer(ctx, w, h, grid) {
-    if (!grid || !grid.length) return;
-    const rows = grid.length;
-    const cols = grid[0].length;
-    const cw = w / cols;
-    const ch = h / rows;
-
+// One pixel per grid cell; drawImage upscales with bilinear smoothing -> soft heatmap.
+function buildHeatmapLayer(grid) {
+    if (!grid || !grid.length) return null;
+    const rows = grid.length, cols = grid[0].length;
+    const c = document.createElement('canvas');
+    c.width = cols;
+    c.height = rows;
+    const img = c.getContext('2d').createImageData(cols, rows);
     for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            const val = grid[r][c];
-            if (val > 0.12) {
-                ctx.fillStyle = `rgba(255, 87, 34, ${val * 0.45})`;
-                ctx.fillRect(c * cw, r * ch, cw + 1, ch + 1);
-            }
+        for (let k = 0; k < cols; k++) {
+            const v = grid[r][k];
+            const i = (r * cols + k) * 4;
+            img.data[i] = 255; img.data[i + 1] = 87; img.data[i + 2] = 34;
+            img.data[i + 3] = v > 0.12 ? Math.round(v * 0.45 * 255) : 0;
         }
     }
+    c.getContext('2d').putImageData(img, 0, 0);
+    return c;
 }
 
+// Low-res nearest-player grid, upscaled with smoothing (soft region borders, ~20x cheaper).
 function drawVoronoiSpace(ctx, w, h, players, L, W) {
-    // Discrete grid Voronoi space allocation for real-time performance
-    const step = 8;
-    for (let y = 0; y < h; y += step) {
-        for (let x = 0; x < w; x += step) {
-            const px_m = (x / w) * L;
-            const py_m = (y / h) * W;
-
-            let closestP = null;
-            let minDist = Infinity;
-            for (const p of players) {
-                const d = Math.hypot(p.pitch_xy[0] - px_m, p.pitch_xy[1] - py_m);
-                if (d < minDist) {
-                    minDist = d;
-                    closestP = p;
-                }
+    const gw = 96;
+    const gh = Math.max(8, Math.round(gw * (W / L)));
+    if (!voronoiLayer || voronoiLayer.width !== gw || voronoiLayer.height !== gh) {
+        voronoiLayer = document.createElement('canvas');
+        voronoiLayer.width = gw;
+        voronoiLayer.height = gh;
+    }
+    const vctx = voronoiLayer.getContext('2d');
+    const img = vctx.createImageData(gw, gh);
+    const pts = players.map(p => [p.pitch_xy[0], p.pitch_xy[1], TEAM_RGB[p.team_id] || [200, 200, 200]]);
+    for (let y = 0; y < gh; y++) {
+        const my = ((y + 0.5) / gh) * W;
+        for (let x = 0; x < gw; x++) {
+            const mx = ((x + 0.5) / gw) * L;
+            let best = null, bestD = Infinity;
+            for (const p of pts) {
+                const dx = p[0] - mx, dy = p[1] - my;
+                const d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = p; }
             }
-
-            if (closestP) {
-                const color = closestP.team_id === 0 ? 'rgba(239, 83, 80, 0.18)' : 'rgba(66, 165, 245, 0.18)';
-                ctx.fillStyle = color;
-                ctx.fillRect(x, y, step, step);
-            }
+            const i = (y * gw + x) * 4;
+            img.data[i] = best[2][0]; img.data[i + 1] = best[2][1]; img.data[i + 2] = best[2][2];
+            img.data[i + 3] = 46;
         }
     }
+    vctx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(voronoiLayer, 0, 0, w, h);
 }
 
 // ========== Phase 5: Export Modal Handlers ==========
@@ -778,10 +852,16 @@ async function startExport() {
 }
 
 // Handle window resize
+let resizePending = false;
 window.addEventListener('resize', () => {
-    setupOverlay();
-    setupRadar();
-    updateDisplay();
+    if (resizePending || !telemetryData) return;
+    resizePending = true;
+    requestAnimationFrame(() => {
+        resizePending = false;
+        setupOverlay();
+        setupRadar();
+        updateDisplay();
+    });
 });
 
 // Start
