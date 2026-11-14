@@ -25,7 +25,7 @@ def _team_votes(frames: dict) -> dict:
     votes = {}
     for fd in frames.values():
         for p in fd.get("players", []):
-            t = p.get("team_id")
+            t = p.get("possession_team", p.get("team_id"))
             if t in (0, 1):
                 v = votes.setdefault(p["tracker_id"], [0, 0])
                 v[t] += 1

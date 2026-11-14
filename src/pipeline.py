@@ -22,6 +22,7 @@ from src.ball_interpolation import interpolate_ball_trajectory
 from src.track_stitcher import stitch_and_clean_trajectories
 from src.scene_guard import detect_scene_cuts
 from src.camera_motion import CameraMotionEstimator
+from src.ball_detector import BallDetector, select_ball_path
 
 
 def process_video(
@@ -68,6 +69,8 @@ def process_video(
 
     # 1 & 2. Sports-tuned tracker with imgsz=1280 and FP16
     tracker = DetectionTracker(device=device, imgsz=imgsz)
+    ball_detector = BallDetector(tracker.model, device=device, imgsz=max(imgsz, 1920))
+    ball_cands, ball_cands_ref = {}, {}
 
     cap = cv2.VideoCapture(video_path)
     # Camera motion: homography was calibrated on the reference frame; pre-roll flow up to start_frame.
@@ -120,24 +123,11 @@ def process_video(
                         "confidence": p["confidence"],
                     })
 
-        # Ball projection & boundary check
+        # Ball: collect low-conf candidates; the global path is chosen after the loop.
+        cands = ball_detector.detect(frame, [p["bbox"] for p in players])
+        ball_cands[current_idx] = cands
+        ball_cands_ref[current_idx] = [tuple(map(float, r)) for r in to_ref([(c[0], c[1]) for c in cands])] if cands else []
         ball_data = None
-        if ball_center is not None:
-            rbx, rby = to_ref([ball_center])[0]
-            ball_pitch = calibrator.pixel_to_pitch(float(rbx), float(rby))
-            bx, by = float(ball_pitch[0]), float(ball_pitch[1])
-            if (-touchline_buffer <= bx <= pitch_len + touchline_buffer and
-                -touchline_buffer <= by <= pitch_wid + touchline_buffer):
-                ball_data = {
-                    "pixel": ball_center,
-                    "pitch_xy": [bx, by],
-                }
-                ball_raw_positions[current_idx] = (ball_center[0], ball_center[1])
-                ball_ref_positions[current_idx] = (float(rbx), float(rby))
-            else:
-                ball_raw_positions[current_idx] = None
-        else:
-            ball_raw_positions[current_idx] = None
 
         raw_frames[str(current_idx)] = {
             "players": players_data,
@@ -152,6 +142,21 @@ def process_video(
             )
 
     cap.release()
+
+    # Global ball path selection (Viterbi over candidates in camera-compensated pixels)
+    chosen = select_ball_path(ball_cands, ball_cands_ref, frame_width=info["width"])
+    for f_idx, ci in chosen.items():
+        ball_raw_positions[f_idx] = None
+        if ci is None:
+            continue
+        cx, cy, cconf = ball_cands[f_idx][ci]
+        rbx, rby = ball_cands_ref[f_idx][ci]
+        bx, by = (float(v) for v in calibrator.pixel_to_pitch(rbx, rby))
+        if (-touchline_buffer <= bx <= pitch_len + touchline_buffer and
+                -touchline_buffer <= by <= pitch_wid + touchline_buffer):
+            raw_frames[str(f_idx)]["ball"] = {"pixel": [cx, cy], "pitch_xy": [bx, by], "confidence": round(cconf, 3)}
+            ball_raw_positions[f_idx] = (cx, cy)
+            ball_ref_positions[f_idx] = (rbx, rby)
 
     # Interpolate ball gaps
     interpolated_ball = interpolate_ball_trajectory(ball_raw_positions, max_gap=45)
@@ -204,9 +209,15 @@ def process_video(
     for fd in cleaned_frames.values():
         for p in fd["players"]:
             tid = p["tracker_id"]
-            team_id = classifier.track_team_map.get(tid, 0)
+            team_id = classifier.track_team_map.get(tid, -1)
             p["team_id"] = team_id
-            p["team_color"] = classifier.team_colors.get(team_id, "#4fc3f7")
+            p["team_color"] = classifier.team_colors.get(team_id, "#bdbdbd")
+            p["kit_similarity"] = classifier.track_similarity.get(tid)
+            gk = getattr(classifier, "goalkeepers", {}).get(tid)
+            if gk is not None:
+                p["role"] = "GK"
+            # team credited with possession when this player has the ball (keepers count for their side)
+            p["possession_team"] = gk if gk is not None else team_id
 
     # Phase 3: Structured football event detection (passes, turnovers, dribbles, shots)
     if progress_callback:
@@ -243,9 +254,11 @@ def process_video(
             "width": pitch_wid,
         },
         "teams": {
-            "team_0": {"name": "Team Red", "color": "#ef5350"},
-            "team_1": {"name": "Team Blue", "color": "#42a5f5"},
-            "goalkeeper": {"name": "Goalkeeper", "color": "#ffd54f"},
+            "team_0": {"name": classifier.team_names[0], "color": classifier.team_colors[0]},
+            "team_1": {"name": classifier.team_names[1], "color": classifier.team_colors[1]},
+            "goalkeeper": {"name": classifier.team_names[-1], "color": classifier.team_colors[-1]},
+            "goalkeepers": {str(k): v for k, v in getattr(classifier, "goalkeepers", {}).items()},
+            "kit_similarity": {str(k): v for k, v in classifier.track_similarity.items()},
             "track_assignments": {str(k): v for k, v in classifier.track_team_map.items()}
         },
         "events": detected_events,

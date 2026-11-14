@@ -106,7 +106,7 @@ class EventDetector:
                 if not is_flyby:
                     possession_timeline[f_idx] = {
                         "player_id": closest_p["tracker_id"],
-                        "team_id": closest_p.get("team_id", 0),
+                        "team_id": closest_p.get("possession_team", closest_p.get("team_id", 0)),
                         "player_xy": closest_p["pitch_xy"],
                         "ball_xy": [bx, by],
                         "dist": min_dist
@@ -222,11 +222,16 @@ class EventDetector:
                     inv_b["start_xy"][1] - inv_a["end_xy"][1]
                 )
 
-                if pass_dist >= self.pass_min_dist:
-                    is_completed = (inv_a["team_id"] == inv_b["team_id"])
-                    event_type = "pass_completed" if is_completed else "turnover"
-                    label = "Completed Pass" if is_completed else "Turnover / Interception"
-                    color = "#66bb6a" if is_completed else "#ef5350"
+                same_team = inv_a["team_id"] == inv_b["team_id"]
+                if pass_dist >= self.pass_min_dist or not same_team:
+                    if same_team:
+                        event_type, label, color = "pass_completed", "Completed Pass", "#66bb6a"
+                    elif pass_dist >= self.pass_min_dist:
+                        # ball travelled (attempted pass) and an opponent took it
+                        event_type, label, color = "interception", "Interception", "#ef5350"
+                    else:
+                        # possession changed at close range: duel / tackle
+                        event_type, label, color = "tackle", "Tackle / Duel Won", "#ff9800"
 
                     events.append({
                         "id": event_id_counter,

@@ -42,7 +42,7 @@ class DetectionTracker:
             persist=True,
             verbose=False,
             imgsz=self.imgsz,
-            classes=[self.person_class_id, self.ball_class_id]
+            classes=[self.person_class_id]
         )[0]
 
         players = []

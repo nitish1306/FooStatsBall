@@ -17,7 +17,18 @@ let frameCache = {};
 const BALL_TRAIL_LENGTH = 60;
 
 // Smooth rendering state
-const TEAM_RGB = { 0: [239, 83, 80], 1: [66, 165, 245], 2: [255, 213, 79] };
+let TEAM_RGB = { 0: [239, 83, 80], 1: [66, 165, 245], [-1]: [189, 189, 189] };
+let TEAM_NAMES = { 0: 'Team A', 1: 'Team B', [-1]: 'Other/GK' };
+const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+// Teams/colours are learned from kits per video; pull them from telemetry.
+function applyTeamMeta(teams) {
+    if (!teams) return;
+    [[0, teams.team_0], [1, teams.team_1], [-1, teams.goalkeeper]].forEach(([k, t]) => {
+        if (!t) return;
+        if (t.color) TEAM_RGB[k] = hexToRgb(t.color);
+        if (t.name) TEAM_NAMES[k] = t.name;
+    });
+}
 let pitchLayer = null;      // cached static pitch drawing (offscreen)
 let heatmapLayer = null;    // cached heatmap bitmap (offscreen)
 let voronoiLayer = null;    // low-res Voronoi buffer, upscaled with smoothing
@@ -57,6 +68,7 @@ async function init() {
     }
     videoInfo = await infoResp.json();
     telemetryData = await telResp.json();
+    applyTeamMeta(telemetryData.teams);
 
     // Build frame cache
     frameCache = telemetryData.frames;
@@ -707,7 +719,7 @@ function setupAnalyticsPanel() {
     Object.keys(players).sort((a,b) => parseInt(a) - parseInt(b)).forEach(tid => {
         const opt = document.createElement('option');
         opt.value = tid;
-        const tname = { 0: 'Red', 1: 'Blue' }[players[tid].team_id] ?? 'Other/GK';
+        const tname = TEAM_NAMES[players[tid].team_id] ?? 'Other/GK';
         opt.textContent = `Player #${tid} (Team ${tname})`;
         sel.appendChild(opt);
     });
@@ -720,7 +732,7 @@ function updatePlayerScorecard(val) {
     const analytics = telemetryData.analytics || {};
     const poss = analytics.possession;
     document.getElementById('metric-possession').textContent =
-        (poss && poss.team_0 != null) ? `🔴 ${poss.team_0}% | 🔵 ${poss.team_1}%` : `n/a (ball seen ${poss?.ball_coverage_pct ?? 0}%)`;
+        (poss && poss.team_0 != null) ? `${TEAM_NAMES[0]} ${poss.team_0}% | ${TEAM_NAMES[1]} ${poss.team_1}%` : `n/a (ball seen ${poss?.ball_coverage_pct ?? 0}%)`;
 
     if (val === 'all') {
         let totalD = 0;
