@@ -53,13 +53,8 @@ def stitch_and_clean_trajectories(
                 track_history[tid] = {}
             track_history[tid][f_idx] = p
 
-    # 2. Drop micro-tracks (< min_track_len total appearances)
-    valid_track_ids = set()
-    for tid, occurrences in track_history.items():
-        if len(occurrences) >= min_track_len:
-            valid_track_ids.add(tid)
-
-    track_history = {tid: occ for tid, occ in track_history.items() if tid in valid_track_ids}
+    # 2. Micro-tracks are dropped only AFTER stitching: fragments left by close contact
+    #    are usually the same player and must be re-joined, not deleted.
 
     # Helper: Check if point is near the boundary/exit
     def is_near_exit(x: float, y: float) -> bool:
@@ -153,6 +148,8 @@ def stitch_and_clean_trajectories(
                 curr_track["end_pos"] = cand_track["end_pos"]
                 curr_track["len"] += cand_track["len"]
 
+    track_history = {tid: occ for tid, occ in track_history.items() if len(occ) >= min_track_len}
+
     # 4. Trajectory gap interpolation & Savitzky-Golay smoothing for each continuous track
     for tid, occ in track_history.items():
         frames = sorted(occ.keys())
@@ -183,8 +180,13 @@ def stitch_and_clean_trajectories(
             if 0 < gap <= max_interp_gap:
                 for f_missing in range(frames[k] + 1, frames[k + 1]):
                     # Interpolated bbox from nearest anchor
-                    ref_bbox = occ[frames[k]]["bbox"]
+                    # Translate the anchor bbox with the interpolated foot so boxes don't freeze in gaps.
+                    anchor = occ[frames[k]]
                     interp_foot = [float(interp_px_x(f_missing)), float(interp_px_y(f_missing))]
+                    dx = interp_foot[0] - anchor["foot_pixel"][0]
+                    dy = interp_foot[1] - anchor["foot_pixel"][1]
+                    x1, y1, x2, y2 = anchor["bbox"]
+                    ref_bbox = [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
                     occ[f_missing] = {
                         "tracker_id": tid,
                         "bbox": ref_bbox,

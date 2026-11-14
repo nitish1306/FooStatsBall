@@ -3,162 +3,165 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tactical Dashboard — FooStatsBall</title>
+    <title>Dashboard · FooStatsBall</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="dashboard-body">
-    <header class="dashboard-header">
-        <a href="/" class="back-link">← Home</a>
-        <h1>⚽ FooStatsBall — Tactical Dashboard</h1>
-        <div class="header-controls">
-            <label><input type="checkbox" id="toggle-bbox" checked> Boxes</label>
-            <label><input type="checkbox" id="toggle-ids" checked> IDs</label>
-            <label><input type="checkbox" id="toggle-ball-trail" checked> Ball Trail</label>
-            <label><input type="checkbox" id="toggle-voronoi"> Space Control (Voronoi)</label>
-            <label><input type="checkbox" id="toggle-heatmap"> Heatmap</label>
-            <button class="export-nav-btn" onclick="openExportModal()">🎬 Export Highlights</button>
+    <header class="site-header full">
+        <div class="site-header-inner">
+            <a href="/" class="brand"><img src="/static/favicon.svg" alt="">FooStatsBall</a>
+            <span class="brand-sep">/</span>
+            <span class="brand-page">Match analysis</span>
+            <div class="header-spacer"></div>
+            <div class="header-controls">
+                <label class="switch" title="Bounding boxes"><input type="checkbox" id="toggle-bbox" checked><span>Boxes</span></label>
+                <label class="switch" title="Track IDs"><input type="checkbox" id="toggle-ids" checked><span>IDs</span></label>
+                <label class="switch" title="Ball trail"><input type="checkbox" id="toggle-ball-trail" checked><span>Ball trail</span></label>
+                <label class="switch" title="Space control (Voronoi)"><input type="checkbox" id="toggle-voronoi"><span>Space control</span></label>
+                <label class="switch" title="Heatmap"><input type="checkbox" id="toggle-heatmap"><span>Heatmap</span></label>
+                <button class="btn btn-outline btn-sm" onclick="openExportModal()">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+                    Export
+                </button>
+            </div>
         </div>
     </header>
 
     <main class="dashboard-container">
-        <!-- Top row: Video + Radar -->
         <div class="dashboard-top">
-            <!-- Video Player -->
-            <div class="pane video-pane">
+            <section class="card pane video-pane">
                 <div class="pane-header">
-                    <span>Match Video</span>
-                    <span id="frame-counter">Frame: 0</span>
+                    <span class="pane-title"><span class="live-dot paused" id="live-dot"></span>Broadcast</span>
+                    <span class="pane-meta" id="frame-counter">Frame 0</span>
                 </div>
                 <div class="video-wrapper">
-                    <video id="match-video" src="/video" preload="auto" controls></video>
+                    <video id="match-video" src="/video" preload="auto" playsinline></video>
                     <canvas id="overlay-canvas"></canvas>
                 </div>
-            </div>
+            </section>
 
-            <!-- 2D Tactical Radar -->
-            <div class="pane radar-pane">
+            <section class="card pane radar-pane">
                 <div class="pane-header">
-                    <span>2D Tactical Radar</span>
-                    <span id="radar-time">0:00</span>
+                    <span class="pane-title">Tactical radar</span>
+                    <div class="legend" id="team-legend"></div>
                 </div>
                 <div class="radar-wrapper">
                     <canvas id="radar-canvas"></canvas>
                 </div>
-            </div>
+            </section>
         </div>
 
-        <!-- Middle: Master Interactive Timeline Bar with Pins -->
-        <div class="master-timeline-pane">
-            <div class="timeline-pins-wrapper" id="timeline-pins-track">
-                <!-- Event marker pins injected here -->
+        <section class="card master-timeline-pane">
+            <div class="playback-controls">
+                <button class="btn btn-ghost btn-icon btn-sm" onclick="skipFrames(-10)" title="Back 10 frames" aria-label="Back 10 frames">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-icon btn-sm" onclick="skipFrames(-1)" title="Back 1 frame" aria-label="Back 1 frame">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <button class="btn btn-primary btn-icon" onclick="togglePlay()" id="play-btn" title="Play / pause" aria-label="Play"></button>
+                <button class="btn btn-ghost btn-icon btn-sm" onclick="skipFrames(1)" title="Forward 1 frame" aria-label="Forward 1 frame">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <button class="btn btn-ghost btn-icon btn-sm" onclick="skipFrames(10)" title="Forward 10 frames" aria-label="Forward 10 frames">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>
+                </button>
             </div>
-            <div class="timeline-bar">
-                <div class="playback-controls">
-                    <button onclick="skipFrames(-10)" title="Back 10 frames">⏪</button>
-                    <button onclick="skipFrames(-1)" title="Back 1 frame">◀</button>
-                    <button onclick="togglePlay()" id="play-btn" title="Play/Pause">▶</button>
-                    <button onclick="skipFrames(1)" title="Forward 1 frame">▶</button>
-                    <button onclick="skipFrames(10)" title="Forward 10 frames">⏩</button>
-                    <select id="speed-select" onchange="setSpeed(this.value)">
-                        <option value="0.25">0.25×</option>
-                        <option value="0.5">0.5×</option>
-                        <option value="1" selected>1×</option>
-                        <option value="2">2×</option>
-                    </select>
-                </div>
+            <div class="timeline-main">
+                <div class="timeline-pins-wrapper" id="timeline-pins-track"></div>
                 <div class="scrubber-container">
-                    <input type="range" id="scrubber" min="0" max="100" value="0" step="1">
-                    <div class="time-display">
-                        <span id="current-time">0:00</span> / <span id="total-time">0:00</span>
-                    </div>
+                    <input type="range" id="scrubber" min="0" max="100" value="0" step="1" aria-label="Seek">
                 </div>
             </div>
-        </div>
+            <div class="time-display"><b id="current-time">0:00</b> / <span id="total-time">0:00</span></div>
+            <select id="speed-select" class="select select-sm" onchange="setSpeed(this.value)" aria-label="Playback speed">
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="2">2x</option>
+            </select>
+        </section>
 
-        <!-- Bottom row: Event Feed (Left) & Analytics Panel (Right) -->
         <div class="dashboard-bottom">
-            <!-- Event Feed -->
-            <div class="event-feed-pane">
-                <div class="event-feed-header">
-                    <span>⚡ Match Event Feed</span>
-                    <div class="event-filters">
-                        <button class="filter-chip active" onclick="filterEvents('all')">All</button>
-                        <button class="filter-chip" onclick="filterEvents('pass_completed')">🟢 Passes</button>
-                        <button class="filter-chip" onclick="filterEvents('turnover')">🔴 Turnovers</button>
-                        <button class="filter-chip" onclick="filterEvents('dribble')">🔵 Carries</button>
-                        <button class="filter-chip" onclick="filterEvents('shot')">🟡 Shots</button>
+            <section class="card event-feed-pane">
+                <div class="pane-header">
+                    <span class="pane-title">Events</span>
+                    <div class="event-filters" id="event-filters">
+                        <button class="filter-chip active" onclick="filterEvents(this.dataset.f, this)" data-f="all">All</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="pass_completed">Passes</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="interception">Interceptions</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="tackle">Tackles</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="dribble">Carries</button>
+                        <button class="filter-chip" onclick="filterEvents(this.dataset.f, this)" data-f="shot">Shots</button>
                     </div>
                 </div>
                 <div class="event-table-scroll">
-                    <table class="event-table" id="event-feed-table">
+                    <table class="table" id="event-feed-table">
                         <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Event Type</th>
-                                <th>Actor</th>
-                                <th>Target</th>
-                                <th>Dist</th>
-                                <th>Action</th>
-                            </tr>
+                            <tr><th>Time</th><th>Event</th><th>From</th><th>To</th><th>Dist</th><th></th></tr>
                         </thead>
-                        <tbody id="event-feed-tbody">
-                            <!-- Injected rows -->
-                        </tbody>
+                        <tbody id="event-feed-tbody"></tbody>
                     </table>
                 </div>
-            </div>
+            </section>
 
-            <!-- Analytics & Physical Scorecard Panel -->
-            <div class="analytics-pane">
-                <div class="analytics-header">
-                    <span>📊 Physical Workload & Match Analytics</span>
-                    <select id="analytics-player-select" onchange="updatePlayerScorecard(this.value)">
-                        <option value="all">Match Overview</option>
+            <section class="card analytics-pane">
+                <div class="pane-header">
+                    <span class="pane-title">Analytics</span>
+                    <select id="analytics-player-select" class="select select-sm" onchange="updatePlayerScorecard(this.value)" aria-label="Player">
+                        <option value="all">Match overview</option>
                     </select>
                 </div>
                 <div class="analytics-content" id="analytics-content">
                     <div class="metric-cards-grid">
-                        <div class="metric-card">
-                            <span class="metric-title">Team Possession</span>
-                            <span class="metric-val" id="metric-possession">🔴 0% | 🔵 100%</span>
+                        <div class="metric-card wide">
+                            <span class="metric-title">Possession</span>
+                            <div id="metric-possession"></div>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-title">Distance Covered</span>
+                            <span class="metric-title">Distance</span>
                             <span class="metric-val" id="metric-distance">-</span>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-title">Top Sprint Speed</span>
+                            <span class="metric-title">Top speed</span>
                             <span class="metric-val" id="metric-topspeed">-</span>
                         </div>
                         <div class="metric-card">
-                            <span class="metric-title">Sprint Count (≥20 km/h)</span>
+                            <span class="metric-title">Sprints &ge; 20 km/h</span>
                             <span class="metric-val" id="metric-sprints">-</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-title" id="metric-kit-title">Kit match</span>
+                            <span class="metric-val" id="metric-kit">-</span>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
         </div>
     </main>
 
-    <!-- Phase 5: Export Highlights Modal -->
     <div id="export-modal" class="modal" style="display:none;">
-        <div class="modal-card">
-            <h3>🎬 Export Video Highlight Reel</h3>
-            <p style="font-size:0.85rem;color:var(--text-dim);margin:0.5rem 0;">
-                Losslessly slice and concatenate key match moments using local FFmpeg.
-            </p>
-            <div style="margin:1rem 0;">
-                <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem;">Preset Reel:</label>
-                <select id="export-preset" style="width:100%;padding:0.4rem;background:var(--bg-dark);color:var(--text);border:1px solid var(--border);border-radius:4px;">
-                    <option value="all_passes">All Passes & Turnovers</option>
-                    <option value="my_touches">All My Touches (Selected Player)</option>
-                    <option value="all_events">All Match Highlights</option>
+        <div class="card modal-card" role="dialog" aria-labelledby="export-title">
+            <div>
+                <h3 class="card-title" id="export-title">Export highlight reel</h3>
+                <p class="card-desc" style="margin-top:0.5rem;">Slice and join key moments with local FFmpeg.</p>
+            </div>
+            <div class="field">
+                <label class="label" for="export-preset">Preset</label>
+                <select id="export-preset" class="select">
+                    <option value="all_passes">Passes and turnovers</option>
+                    <option value="my_touches">Selected player touches</option>
+                    <option value="all_events">All highlights</option>
                 </select>
             </div>
-            <div id="export-feedback" style="font-size:0.85rem;margin-bottom:1rem;color:var(--accent);"></div>
-            <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
-                <button class="btn btn-secondary" onclick="closeExportModal()">Cancel</button>
-                <button class="btn btn-primary" id="start-export-btn" onclick="startExport()">Export Reel (FFmpeg)</button>
+            <div id="export-feedback"></div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="closeExportModal()">Cancel</button>
+                <button class="btn btn-primary" id="start-export-btn" onclick="startExport()">Export reel</button>
             </div>
         </div>
     </div>
@@ -166,4 +169,3 @@
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
-

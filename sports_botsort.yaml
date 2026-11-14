@@ -2,9 +2,9 @@
 # Overrides pedestrian defaults to enforce football player object permanence
 
 tracker_type: botsort
-track_high_thresh: 0.35      # 1st-stage association threshold
+track_high_thresh: 0.3       # 1st-stage association threshold
 track_low_thresh: 0.1        # 2nd-stage association threshold for motion-blurred sprinters
-new_track_thresh: 0.65       # High spawn threshold to prevent false-positive phantom tracks
+new_track_thresh: 0.3        # 0.65 hid ~half the players (far/occluded score 0.3-0.6); phantoms are dropped post-stitch
 track_buffer: 160            # Extended memory (~5.3s at 30fps / ~2.7s at 60fps) for occluded players
 match_thresh: 0.8            # Matching threshold for association
 fuse_score: True             # Fuse detection confidence with similarity

@@ -1,5 +1,5 @@
 /**
- * FooStatsBall — Calibration Tool
+ * FooStatsBall - Calibration Tool
  * Interactive pitch landmark selection on video Frame 0.
  */
 
@@ -214,7 +214,7 @@ function drawPitch() {
     pitchCanvas._transform = { offX, offY, scale, L, W };
 }
 
-// Pitch canvas click → find nearest landmark
+// Pitch canvas click -> find nearest landmark
 pitchCanvas.addEventListener('click', (e) => {
     if (!pendingPixelClick) return;
 
@@ -307,7 +307,7 @@ function updateUI() {
             <td>${pt.landmark}</td>
             <td>(${pt.pixel_x}, ${pt.pixel_y})</td>
             <td>(${pt.pitch_x}, ${pt.pitch_y})</td>
-            <td><button class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.75rem" onclick="removePoint(${i})">✕</button></td>
+            <td><button class="btn btn-ghost btn-icon btn-sm" onclick="removePoint(${i})" aria-label="Remove point"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></td>
         `;
         tbody.appendChild(row);
     }
@@ -340,20 +340,20 @@ async function saveCalibration() {
 
         if (data.success) {
             resultMsg.innerHTML = `
-                ✅ <strong>Homography computed successfully!</strong><br>
-                Reprojection error: <strong>${data.reprojection_error_px} px</strong>
-                (${data.reprojection_error_px < 5 ? '🟢 Excellent' : data.reprojection_error_px < 15 ? '🟡 Acceptable' : '🔴 Consider adding more points'})<br>
-                Points used: ${data.num_points}<br><br>
-                <a href="/" class="btn btn-primary">← Back to Home — Start Processing</a>
+                <strong>Homography saved.</strong>
+                Reprojection error <span class="num">${data.reprojection_error_px} px</span>
+                (${data.reprojection_error_px < 5 ? 'excellent' : data.reprojection_error_px < 15 ? 'acceptable' : 'consider adding points'}),
+                ${data.num_points} points.
+                <div style="margin-top:0.75rem"><a href="/" class="btn btn-primary btn-sm">Continue to processing</a></div>
             `;
-            resultMsg.style.borderColor = 'var(--accent-green)';
+            
         } else {
-            resultMsg.innerHTML = `❌ Error: ${data.error}`;
-            resultMsg.style.borderColor = 'var(--accent-red)';
+            resultMsg.innerHTML = `Error: ${data.error}`;
+            resultMsg.classList.add('error');
         }
     } catch (e) {
-        resultMsg.innerHTML = `❌ Network error: ${e.message}`;
-        resultMsg.style.borderColor = 'var(--accent-red)';
+        resultMsg.innerHTML = `Network error: ${e.message}`;
+        resultMsg.classList.add('error');
     }
 }
 

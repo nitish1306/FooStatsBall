@@ -3,83 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pitch Calibration — FooStatsBall</title>
+    <title>Calibration · FooStatsBall</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
-    <header>
-        <a href="/" class="back-link">← Back</a>
-        <h1>⚽ Pitch Calibration</h1>
-        <p class="subtitle">Click pitch landmarks on the video frame, then map them to the pitch diagram</p>
+<body class="page">
+    <header class="site-header full">
+        <div class="site-header-inner">
+            <a href="/" class="brand"><img src="/static/favicon.svg" alt="">FooStatsBall</a>
+            <span class="brand-sep">/</span>
+            <span class="brand-page">Calibration</span>
+        </div>
     </header>
 
-    <main class="calibrate-container">
-        <!-- Controls bar -->
-        <div class="calibrate-controls">
-            <label>
-                Match Video:
-                <select id="video-select"></select>
-            </label>
-            <label>
-                Pitch Preset:
-                <select id="pitch-preset">
-                    <option value="7v7" selected>7v7 (90×45m)</option>
-                    <option value="11v11">11v11 (105×68m)</option>
-                    <option value="5v5">5v5 (40×25m)</option>
-                    <option value="futsal">Futsal (40×20m)</option>
+    <main style="padding:1rem;">
+        <div class="card toolbar">
+            <div class="field">
+                <label class="label" for="video-select">Video</label>
+                <select id="video-select" class="select"></select>
+            </div>
+            <div class="field">
+                <label class="label" for="pitch-preset">Pitch</label>
+                <select id="pitch-preset" class="select">
+                    <option value="7v7" selected>7v7 · 90 x 45 m</option>
+                    <option value="11v11">11v11 · 105 x 68 m</option>
+                    <option value="5v5">5v5 · 40 x 25 m</option>
+                    <option value="futsal">Futsal · 40 x 20 m</option>
                 </select>
-            </label>
-            <span id="point-count">Points: 0 / 4 minimum</span>
-            <button onclick="undoLastPoint()" class="btn btn-secondary" id="undo-btn" disabled>Undo Last</button>
-            <button onclick="clearAllPoints()" class="btn btn-secondary">Clear All</button>
-            <button onclick="saveCalibration()" class="btn btn-primary" id="save-btn" disabled>
-                Compute Homography & Save
-            </button>
+            </div>
+            <div class="grow"></div>
+            <span class="badge badge-muted num" id="point-count">Points: 0 / 4 minimum</span>
+            <button onclick="undoLastPoint()" class="btn btn-ghost" id="undo-btn" disabled>Undo</button>
+            <button onclick="clearAllPoints()" class="btn btn-outline">Clear</button>
+            <button onclick="saveCalibration()" class="btn btn-primary" id="save-btn" disabled>Compute and save</button>
         </div>
 
         <div class="calibrate-panels">
-            <!-- Left: Video frame with click targets -->
-            <div class="panel">
-                <h3>Video Frame 0 — Click a landmark</h3>
-                <div class="frame-container" id="frame-container">
-                    <canvas id="frame-canvas"></canvas>
+            <section class="card">
+                <div class="panel-head"><span class="pane-title">Video frame</span><span class="help">Click a landmark</span></div>
+                <div class="panel-body">
+                    <div class="frame-container" id="frame-container"><canvas id="frame-canvas"></canvas></div>
                 </div>
-            </div>
-
-            <!-- Right: Pitch diagram with landmark selector -->
-            <div class="panel">
-                <h3>Pitch Diagram — Select the corresponding landmark</h3>
-                <div class="pitch-container">
-                    <canvas id="pitch-canvas" width="600" height="400"></canvas>
+            </section>
+            <section class="card">
+                <div class="panel-head"><span class="pane-title">Pitch</span><span class="help">Pick the matching landmark</span></div>
+                <div class="panel-body">
+                    <div class="pitch-container"><canvas id="pitch-canvas" width="600" height="400"></canvas></div>
+                    <div id="landmark-selector" class="landmark-selector" style="display:none;">
+                        <p>Which landmark did you click?</p>
+                        <div id="landmark-buttons" class="landmark-buttons"></div>
+                    </div>
                 </div>
-                <div id="landmark-selector" class="landmark-selector" style="display:none;">
-                    <p>What did you click? Select the landmark:</p>
-                    <div id="landmark-buttons" class="landmark-buttons"></div>
-                </div>
-            </div>
+            </section>
         </div>
 
-        <!-- Points table -->
-        <div class="points-table-container">
-            <h3>Calibration Points</h3>
-            <table id="points-table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Landmark</th>
-                        <th>Pixel (x, y)</th>
-                        <th>Pitch (x, y) meters</th>
-                        <th></th>
-                    </tr>
-                </thead>
+        <section class="card" style="margin-top:1rem;">
+            <div class="panel-head"><span class="pane-title">Calibration points</span></div>
+            <table class="table" id="points-table">
+                <thead><tr><th>#</th><th>Landmark</th><th>Pixel (x, y)</th><th>Pitch (x, y) m</th><th></th></tr></thead>
                 <tbody id="points-tbody"></tbody>
             </table>
-        </div>
+        </section>
 
-        <div id="result-msg" class="result-msg"></div>
+        <div id="result-msg" class="card result-msg"></div>
     </main>
 
     <script src="/static/js/calibrate.js"></script>
 </body>
 </html>
-
