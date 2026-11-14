@@ -9,7 +9,7 @@ Goal: dashboard usable on phones (most viewers), clean on tablet/desktop; reel e
       header toggles in one horizontal scroll row; timeline wraps (scrubber full width, big touch targets);
       radar 2:1 box; events table capped height, Dist column hidden; export modal as bottom sheet
 - [x] 4. Tablet (768-1099px): video + radar side by side, bottom panes stacked
-- [x] 5. Verified 375/768/1440 on local static build (no h-scroll, 12 events, reel 2.7 MB, bottom sheet); republish Sample pending
+- [x] 5. Verified 375/768/1440 on local static build (no h-scroll, 12 events, reel 2.7 MB, bottom sheet); Sample republished
 
 ## Unresolved
 - Sticky video while scrolling events on phone?
