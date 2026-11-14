@@ -1,105 +1,63 @@
-# FooStatsBall ⚽📊
+# FooStatsBall
 
-**Local Football Match Telemetry & 2D Tactical Radar**
+Turn single-camera football footage into tracked players, events, physical stats and a shareable tactical dashboard. Processing runs locally. Sharing is static files on Cloudflare R2, with no server.
 
-A 100% offline, local computer vision and tactical analytics system for association football matches. FooStatsBall transforms raw single-camera match footage (broadcast or fixed/elevated camera like Veo) into 2D pitch-plane positional telemetry, physical kinematics, tactical radar feeds, and automated event highlight reels.
+Technical details: [docs/TECHNICAL.md](docs/TECHNICAL.md)
 
----
+## Features
+- Pitch calibration: click 4+ landmarks to map video pixels to metres. Presets: 11v11, 7v7, 5v5, futsal.
+- Player and ball tracking: YOLO11 + BoT-SORT, track stitching, re-detection of lost players. Estimated positions are drawn faded.
+- Team split by kit colour, plus goalkeeper detection.
+- Events: passes, turnovers, carries, possession.
+- Stats: distance, top speed, sprints, heatmaps per player and per team.
+- Dashboard: video with overlay, live 2D radar, event feed, analytics.
+- "ME" mode: click your player, then export your own highlight reel.
+- Share a match as a static page anyone can open.
 
-## 🌟 Key Features
-
-1. **Interactive Pitch Calibration & Planar Homography**
-   - Interactive 4-point homography calibration directly on match video frames.
-   - Presets for **11v11 standard** ($105\text{m} \times 68\text{m}$), **7v7** ($60\text{m} \times 40\text{m}$), **5v5** ($40\text{m} \times 20\text{m}$), and **Futsal**.
-   - Sub-meter coordinate projection from camera pixel plane $(u, v)$ to metric pitch plane $(X, Y)$ via RANSAC with reprojection error estimation.
-
-2. **Multi-Object Tracking with Sports-Tuned BoT-SORT**
-   - YOLO11 object detection running locally on GPU/CPU.
-   - Sports-tuned tracker parameters with high track buffer (60 frames) to maintain identity continuity through occlusions and referee/bench crossings.
-
-3. **Physical Object Permanence & Coordinate Alignment Upgrades**
-   - **Tracklet Stitcher**: Drops micro-tracks (< 15 frames) and merges fragmented tracklets using spatio-temporal kinematic gating ($d \le 9\,\text{m/s} \times \Delta t$).
-   - **Savitzky-Golay Anti-Jitter Filter**: Removes high-frequency camera and detector jitter for butter-smooth trajectory lines.
-   - **Ball Gap Interpolation**: Reconstructs missing ball positions across occluded and fast-moving frames.
-   - **Letterbox Aspect-Ratio Correction**: Dynamically accounts for canvas and video container offsets to prevent bounding box drift.
-
-4. **Turf-Invariant Team Kit Segregation**
-   - Torso crop extraction with pitch-green pixel masking.
-   - Normalized red chromatic ratio $\frac{R}{G + B}$ clustering to reliably differentiate teams (e.g. Orange/Red vs Bib/White) without turf grass contamination.
-   - Automated goalkeeper isolation based on proximity to goal line and color divergence.
-
-5. **Football Event Detection & Vector Deflection Guard**
-   - **Pass Detection**: Tracks possession changes with a **directional deflection & deceleration vector filter** to ensure balls shot past a defender are not falsely counted as receptions.
-   - **Possession & Turnover Tracking**: Continuous state machine monitoring team and player ball possession.
-   - **Carries & Progressive Runs**: Detection of continuous ball movement under player control.
-
-6. **Physical Kinematics & Tactical Heatmaps**
-   - Physical load metrics: Total distance (m), top speed (km/h), and high-intensity sprint count ($\ge 20\,\text{km/h}$).
-   - Team possession percentage breakdown.
-   - 2D Gaussian Kernel Density Estimation (KDE) pitch heatmaps for individual players and teams.
-
-7. **Automated Event Clipping & Highlight Export**
-   - Local FFmpeg pipeline with pre-roll (3s) and post-roll (2s) event extraction.
-   - Lossless concatenation into downloadable match highlight reels.
-
----
-
-## 🛠️ Tech Stack
-
-- **Backend**: Python 3.12, FastAPI, Uvicorn, Starlette
-- **Computer Vision**: PyTorch, Ultralytics YOLO11, OpenCV, SciPy, Scikit-Learn
-- **Media Processing**: FFmpeg
-- **Frontend**: HTML5 Canvas, Vanilla ES6 JavaScript, Modern CSS3 Dark Mode UI
-
----
-
-## 🚀 Quick Start
-
-### 1. Prerequisites
-- Python 3.10+ (Python 3.12 recommended)
-- NVIDIA GPU with CUDA support (optional, but recommended for real-time inference)
-- FFmpeg installed and available on system PATH
-
-### 2. Installation
+## Run locally
+Needs Python 3.10+ and FFmpeg on PATH.
 ```bash
-# Clone the repository
-git clone https://github.com/nitish1306/foostatsball.git
-cd foostatsball
-
-# Create and activate virtual environment
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On Linux/macOS:
-source venv/bin/activate
-
-# Install dependencies
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
-
-### 3. Running the Application
 ```bash
-python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn app:app --port 8000
 ```
-Open your browser and navigate to:
+Open http://127.0.0.1:8000, then:
+1. Pick a video (an `.mp4` in the repo root).
+2. Calibrate the pitch.
+3. Process the video (choose a range, e.g. the first 60 s).
+4. Open the dashboard.
+
+## Share a match (Cloudflare R2)
+One-time setup: create a bucket, enable its public `r2.dev` URL, and create `.env` (it is git-ignored, never commit it):
 ```
-http://127.0.0.1:8000
+R2_PUBLIC_URL=https://pub-xxxx.r2.dev
+R2_BUCKET=football-full-game-videos
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...        # API token id
+CLOUDFLARE_API_TOKEN=...    # API token value (R2 read/write)
 ```
+Publish a processed video into its own folder:
+```bash
+venv/bin/python tools/publish_match.py "Fixedcam football game.mp4" --folder Sample
+```
+It prints the link to share:
+```
+https://pub-xxxx.r2.dev/Sample/index.html
+```
+Each match folder in the bucket is self-contained:
+```
+Sample/
+  Fixedcam football game.mp4   raw video
+  index.html                   dashboard (share this)
+  assets/                      js, css, icon
+  data/                        meta.json + frames/
+  video/                       HLS stream
+```
+> The link must end in `/index.html`. r2.dev returns 404 for `/` and `/Sample/`.
 
----
+Add `--no-upload` to build the folder locally in `export/<folder>/` without uploading anything.
 
-## 📋 Workflow Guide
-
-1. **Select Match Video**: Place your match footage (`.mp4`) in the root or select from the dropdown.
-2. **Calibrate Pitch**: Open the Calibration page, select pitch dimensions (e.g. 7v7 or 11v11), and click 4 ground-truth landmarks (corner flags, penalty marks, center spot).
-3. **Run Pipeline**: Click **Run Full Pipeline** to extract detections, track identities, classify jerseys, detect events, and compute physical metrics.
-4. **Tactical Dashboard**:
-   - Inspect the synchronized split-screen video player and 2D tactical radar.
-   - Toggle speed vectors, trajectories, team possession, and event overlays.
-   - View player leaderboards (distance, top speed, sprints) and generate 2D heatmaps.
-   - Export automated highlight reels to MP4.
-
----
-
-## 📄 License
-MIT License. Free for personal and commercial use.
+## License
+MIT
