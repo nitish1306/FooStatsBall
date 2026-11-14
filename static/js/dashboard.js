@@ -13,6 +13,44 @@ let animFrameId = null;
 // Telemetry frame cache for fast lookup
 let frameCache = {};
 
+// ========== Static mode (published to R2, no server) ==========
+const STATIC = !!window.FOOSTATS_STATIC;
+const MATCH_SLUG = new URLSearchParams(location.search).get('m');
+const MATCH_BASE = STATIC ? `../matches/${encodeURIComponent(MATCH_SLUG || '')}/` : '';
+const chunkLoads = {};
+
+function ensureChunk(frame) {
+    if (!STATIC || !telemetryData) return Promise.resolve();
+    const { chunk_frames, chunks } = telemetryData.static;
+    const idx = Math.floor(frame / chunk_frames);
+    if (!chunks.includes(idx)) return Promise.resolve();
+    if (!chunkLoads[idx]) {
+        chunkLoads[idx] = fetch(`${MATCH_BASE}frames/c${String(idx).padStart(4, '0')}.json`)
+            .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(frames => { Object.assign(frameCache, frames); })
+            .catch(e => { delete chunkLoads[idx]; console.error('chunk load', idx, e); });
+    }
+    return chunkLoads[idx];
+}
+
+function prefetchAround(frame) {
+    if (!STATIC || !telemetryData) return;
+    const cf = telemetryData.static.chunk_frames;
+    ensureChunk(frame);
+    ensureChunk(frame + cf / 2);
+}
+
+function attachVideoSource() {
+    const src = `${MATCH_BASE}video/index.m3u8`;
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = src;
+    } else if (window.Hls && Hls.isSupported()) {
+        const hls = new Hls({ maxBufferLength: 30 });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+    }
+}
+
 // Ball trail length (frames looked back in the telemetry cache)
 const BALL_TRAIL_LENGTH = 60;
 
@@ -78,18 +116,29 @@ const toggleHeatmap = document.getElementById('toggle-heatmap');
 // ========== Init ==========
 async function init() {
     // Load video info
-    const [infoResp, telResp] = await Promise.all([fetch('/api/video-info'), fetch('/api/telemetry')]);
-    if (!infoResp.ok || !telResp.ok) {
-        document.body.insertAdjacentHTML('afterbegin',
-            '<div style="padding:1rem;background:#7f1d1d;color:#fff">Failed to load video info or telemetry for the active video.</div>');
-        return;
+    if (STATIC) {
+        const resp = MATCH_SLUG ? await fetch(`${MATCH_BASE}meta.json`) : null;
+        if (!resp || !resp.ok) {
+            document.body.insertAdjacentHTML('afterbegin',
+                '<div style="padding:1rem;background:#7f1d1d;color:#fff">Match not found. Open it from the match list.</div>');
+            return;
+        }
+        telemetryData = await resp.json();
+        videoInfo = telemetryData.video_info;
+        attachVideoSource();
+        await ensureChunk(telemetryData.processing?.start_frame ?? 0);
+    } else {
+        const [infoResp, telResp] = await Promise.all([fetch('/api/video-info'), fetch('/api/telemetry')]);
+        if (!infoResp.ok || !telResp.ok) {
+            document.body.insertAdjacentHTML('afterbegin',
+                '<div style="padding:1rem;background:#7f1d1d;color:#fff">Failed to load video info or telemetry for the active video.</div>');
+            return;
+        }
+        videoInfo = await infoResp.json();
+        telemetryData = await telResp.json();
+        frameCache = telemetryData.frames;
     }
-    videoInfo = await infoResp.json();
-    telemetryData = await telResp.json();
     applyTeamMeta(telemetryData.teams);
-
-    // Build frame cache
-    frameCache = telemetryData.frames;
 
     // Set scrubber range
     const processing = telemetryData.processing || {};
@@ -166,8 +215,8 @@ async function init() {
     function setupOverlay() {
     // Determine the exact rendered display box of the video under object-fit: contain
     const rect = video.getBoundingClientRect();
-    const vw = video.videoWidth || (videoInfo ? videoInfo.width : 1280);
-    const vh = video.videoHeight || (videoInfo ? videoInfo.height : 720);
+    const vw = (STATIC && videoInfo?.width) || video.videoWidth || (videoInfo ? videoInfo.width : 1280);
+    const vh = (STATIC && videoInfo?.height) || video.videoHeight || (videoInfo ? videoInfo.height : 720);
 
     const videoAspect = vw / vh;
     const containerAspect = rect.width / rect.height;
@@ -296,6 +345,7 @@ function animLoop() {
     const frame = Math.floor(t);
     if (frame !== currentFrame) {
         currentFrame = frame;
+        if (frame % 30 === 0) prefetchAround(frame);
         scrubber.value = frame;
         updateHud();
     }
@@ -323,6 +373,8 @@ function startVideoFrameSync() {
 }
 
 function seekToFrame(frame) {
+    prefetchAround(frame);
+    ensureChunk(frame).then(() => { if (currentFrame === frame) updateDisplay(); });
     currentFrame = frame;
     overlayFrame = frame;
     // Seek to frame centre so the decoder lands on the intended frame
@@ -814,14 +866,27 @@ function updatePlayerScorecard(val) {
 
 async function fetchHeatmap(target) {
     try {
-        const resp = await fetch(`/api/heatmap/${target}`);
-        const data = await resp.json();
-        activeHeatmapGrid = data.grid;
+        let grid;
+        if (STATIC) {
+            const key = target === 'all' ? null : (target === 'team_0' || target === 'team_1') ? target : String(target).replace(/^player_/, '');
+            grid = key ? telemetryData.heatmaps?.[key] : sumGrids(telemetryData.heatmaps?.team_0, telemetryData.heatmaps?.team_1);
+        } else {
+            const resp = await fetch(`/api/heatmap/${target}`);
+            grid = (await resp.json()).grid;
+        }
+        activeHeatmapGrid = grid;
         heatmapLayer = buildHeatmapLayer(activeHeatmapGrid);
         if (toggleHeatmap && toggleHeatmap.checked) updateDisplay();
     } catch (e) {
         console.error("Heatmap fetch error:", e);
     }
+}
+
+function sumGrids(a, b) {
+    if (!a || !b) return a || b || null;
+    const out = a.map((row, r) => row.map((v, k) => v + b[r][k]));
+    const mx = Math.max(...out.flat(), 1e-9);
+    return out.map(row => row.map(v => v / mx));
 }
 
 // One pixel per grid cell; drawImage upscales with bilinear smoothing -> soft heatmap.
@@ -892,6 +957,12 @@ async function startExport() {
     const preset = document.getElementById('export-preset').value;
 
     btn.disabled = true;
+    if (STATIC) {
+        try { await exportStaticReel(preset, feedback); }
+        catch (e) { feedback.textContent = `Export error: ${e.message}`; }
+        finally { btn.disabled = false; }
+        return;
+    }
     feedback.textContent = 'Rendering and concatenating video highlights via FFmpeg...';
 
     try {
@@ -914,6 +985,57 @@ async function startExport() {
     } finally {
         btn.disabled = false;
     }
+}
+
+// ----- Static highlight reel: event windows -> HLS fMP4 segments -> one .mp4 blob -----
+function selectExportEvents(preset, pid) {
+    const events = telemetryData.events || [];
+    if (preset === 'all_passes') return events.filter(e => ['pass_completed', 'turnover'].includes(e.type));
+    if (preset === 'my_touches') {
+        if (pid == null) return [];
+        return events.filter(e => e.player_id === pid || e.passer_id === pid || e.receiver_id === pid);
+    }
+    return events;
+}
+
+async function exportStaticReel(preset, feedback) {
+    const fps = videoInfo.fps;
+    const events = selectExportEvents(preset, myPlayerTrackId);
+    if (!events.length) {
+        feedback.textContent = preset === 'my_touches' && myPlayerTrackId == null
+            ? 'Pick yourself first: click your player on the video, then export.'
+            : 'No matching events.';
+        return;
+    }
+    feedback.textContent = 'Reading playlist...';
+    const base = `${MATCH_BASE}video/`;
+    const m3u8 = await (await fetch(`${base}index.m3u8`)).text();
+    const segs = [];
+    let t = 0, dur = 0;
+    for (const line of m3u8.split('\n')) {
+        if (line.startsWith('#EXTINF:')) dur = parseFloat(line.slice(8));
+        else if (line && !line.startsWith('#')) { segs.push({ uri: line.trim(), start: t, end: t + dur }); t += dur; }
+    }
+    const wanted = new Set();
+    for (const ev of events) {
+        const ts = ev.timestamp ?? (ev.start_frame || 0) / fps;
+        const d = ev.duration_s ?? ((ev.end_frame || 0) - (ev.start_frame || 0)) / fps;
+        const a = ts - 2, b = ts + Math.max(d, 0) + 2;
+        segs.forEach((s, i) => { if (s.end > a && s.start < b) wanted.add(i); });
+    }
+    const idxs = [...wanted].sort((x, y) => x - y);
+    const parts = [await (await fetch(`${base}init.mp4`)).arrayBuffer()];
+    for (let i = 0; i < idxs.length; i++) {
+        feedback.textContent = `Downloading clip ${i + 1}/${idxs.length}...`;
+        const r = await fetch(base + segs[idxs[i]].uri);
+        if (!r.ok) throw new Error(`segment ${segs[idxs[i]].uri}: ${r.status}`);
+        parts.push(await r.arrayBuffer());
+    }
+    const blob = new Blob(parts, { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    const name = `${MATCH_SLUG}_${preset}${myPlayerTrackId != null && preset === 'my_touches' ? '_p' + myPlayerTrackId : ''}.mp4`;
+    feedback.innerHTML = `<span>Reel ready: ${events.length} events, ${(blob.size / 1e6).toFixed(1)} MB</span>
+        <a href="${url}" download="${name}" class="btn btn-primary btn-sm">Download reel</a>`;
 }
 
 // Handle window resize
