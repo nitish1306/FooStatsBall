@@ -17,8 +17,8 @@ models/
 *.onnx
 *.engine
 
-# Video Files & Raw Media (prevent exceeding GitHub 100MB limit)
-*.mp4
+# Video Files & Raw Media (managed via Git LFS or ignored)
+output/*.mp4
 *.avi
 *.mov
 *.mkv
@@ -29,9 +29,10 @@ models/
 !static/js/*
 
 # Telemetry outputs & temp files
-output/
 output/*
 !output/.gitkeep
+!output/calibration.json
+!output/telemetry.json
 
 # Environment variables
 .env
