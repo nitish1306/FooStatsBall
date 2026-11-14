@@ -396,6 +396,9 @@ function drawOverlay(frameData, frameIdx = currentFrame) {
         const [x1, y1, x2, y2] = player.bbox;
         const isMe = (myPlayerTrackId !== null && player.tracker_id === myPlayerTrackId);
         const color = isMe ? '#ffd700' : (player.team_color || '#4fc3f7');
+        // Estimated (gap-filled / vicinity re-detected) positions render faded + dashed.
+        overlayCtx.globalAlpha = (player.interpolated || player.redetected) ? 0.45 : 1;
+        overlayCtx.setLineDash((player.interpolated || player.redetected) ? [5, 4] : []);
 
         if (showBbox) {
             overlayCtx.strokeStyle = color;
@@ -424,6 +427,8 @@ function drawOverlay(frameData, frameIdx = currentFrame) {
         overlayCtx.fillStyle = color;
         overlayCtx.fill();
     }
+    overlayCtx.globalAlpha = 1;
+    overlayCtx.setLineDash([]);
 
     // Draw ball
     if (frameData.ball) {
@@ -492,6 +497,7 @@ function drawRadar(frameData) {
         const isMe = (myPlayerTrackId !== null && player.tracker_id === myPlayerTrackId);
         const color = isMe ? '#ffd700' : (player.team_color || '#4fc3f7');
 
+        ctx.globalAlpha = (player.interpolated || player.redetected) ? 0.45 : 1;
         ctx.beginPath();
         ctx.arc(cx, cy, isMe ? 8 : 6, 0, Math.PI * 2);
         ctx.fillStyle = color;
@@ -516,6 +522,7 @@ function drawRadar(frameData) {
             ctx.fillText(isMe ? `${player.tracker_id}` : `${player.tracker_id}`, cx, cy - (isMe ? 12 : 9));
         }
     }
+    ctx.globalAlpha = 1;
 
     // Draw ball trail on radar
     if (toggleBallTrail.checked) {

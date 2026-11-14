@@ -19,6 +19,7 @@ from pathlib import Path
 from src.calibration import PitchCalibrator, get_video_info
 from src.detection import DetectionTracker
 from src.ball_interpolation import interpolate_ball_trajectory
+from src.vicinity import VicinityRedetector
 from src.track_stitcher import stitch_and_clean_trajectories
 from src.scene_guard import detect_scene_cuts
 from src.camera_motion import CameraMotionEstimator
@@ -95,12 +96,14 @@ def process_video(
     ball_ref_positions = {}
     t_start = time.time()
 
+    redetector = VicinityRedetector(tracker.model, device, fps)
     for current_idx in range(start_frame, end_frame + 1):
         ret, frame = cap.read()
         if not ret:
             break
 
         players, ball_center = tracker.detect_and_track(frame, conf=detection_conf)
+        redetector.update(frame, current_idx, players)
         if cam is not None:
             cam.update(frame, [p["bbox"] for p in players])
 
@@ -122,6 +125,7 @@ def process_video(
                         "foot_pixel": p["foot_pixel"],
                         "pitch_xy": [mx, my],
                         "confidence": p["confidence"],
+                        "redetected": p.get("redetected", False),
                     })
 
         # Ball: collect low-conf candidates; the global path is chosen after the loop.
