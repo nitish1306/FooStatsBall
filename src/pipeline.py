@@ -38,6 +38,7 @@ def process_video(
     touchline_buffer: float = 0.5,
     progress_callback=None,
     compensate_camera_motion: bool = True,
+    two_kits_only: bool = False,
 ) -> dict:
     """
     Run detection, tracking, homography projection, and trajectory stitching upgrades.
@@ -200,7 +201,7 @@ def process_video(
         progress_callback(frames_to_process, frames_to_process, "Classifying team jersey colors...")
 
     from src.team_classifier import TeamClassifier
-    classifier = TeamClassifier()
+    classifier = TeamClassifier(two_kits_only=two_kits_only)
     temp_telemetry = {"frames": cleaned_frames}
     classifier.collect_features_from_video(video_path, temp_telemetry)
     classifier.fit_clusters(pitch_length=pitch_len, pitch_width=pitch_wid, telemetry=temp_telemetry)

@@ -38,3 +38,12 @@ Team classifier: kits are red vs yellow (+ black GK/ref). Rule `R/(G+B)>0.62` sc
 - Download larger YOLO (11m/11x) or football-ball model weights? ok?
 - Ball-pass at 1920 ~2x slower; acceptable?
 - Want manual-label eval set for ball?
+
+## Phase: Two-kits mode + UI cleanup
+- [x] `two_kits_only` flag (classifier/pipeline/API) + home-page switch
+- [x] Achromatic OKLch design system in `static/css/style.css`, Inter + JetBrains Mono
+- [x] Templates rewritten, inline SVG icons, zero emojis (HTML/JS)
+- [x] `static/favicon.svg` + brand mark in header
+- [x] Event chips with counts, empty state, dot labels, timeline pin tooltips
+- [x] Possession bar, team legend, kit-match % in player select + metric card
+- [x] Browser-verified home/calibrate/dashboard (no console errors after fix)

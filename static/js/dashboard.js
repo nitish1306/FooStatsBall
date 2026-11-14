@@ -1,5 +1,5 @@
 /**
- * FooStatsBall — Tactical Dashboard
+ * FooStatsBall - Tactical Dashboard
  * Synchronized video player + 2D tactical radar.
  */
 
@@ -28,6 +28,16 @@ function applyTeamMeta(teams) {
         if (t.color) TEAM_RGB[k] = hexToRgb(t.color);
         if (t.name) TEAM_NAMES[k] = t.name;
     });
+    const legend = document.getElementById('team-legend');
+    if (legend) {
+        const keys = teams.goalkeeper ? [0, 1, -1] : [0, 1];
+        legend.innerHTML = keys.map(k => `<span><span class="dot" style="background:rgb(${TEAM_RGB[k].join(',')})"></span>${TEAM_NAMES[k]}</span>`).join('');
+    }
+}
+const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function kitSimilarity(tid) {
+    const ks = telemetryData?.teams?.kit_similarity;
+    return ks ? ks[tid] ?? ks[String(tid)] : undefined;
 }
 let pitchLayer = null;      // cached static pitch drawing (offscreen)
 let heatmapLayer = null;    // cached heatmap bitmap (offscreen)
@@ -49,6 +59,14 @@ const currentTimeEl = document.getElementById('current-time');
 const totalTimeEl = document.getElementById('total-time');
 const radarTimeEl = document.getElementById('radar-time');
 const playBtn = document.getElementById('play-btn');
+const ICON_PLAY = '<svg class="icon" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/></svg>';
+const ICON_PAUSE = '<svg class="icon" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/></svg>';
+function setPlayIcon(playing) {
+    playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+    playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    document.getElementById('live-dot')?.classList.toggle('paused', !playing);
+}
+setPlayIcon(false);
 
 // Toggles
 const toggleBbox = document.getElementById('toggle-bbox');
@@ -103,7 +121,7 @@ async function init() {
     video.addEventListener('play', () => {
         if (!isPlaying) {
             isPlaying = true;
-            playBtn.textContent = '⏸';
+            setPlayIcon(true);
             animLoop();
         }
     });
@@ -111,7 +129,7 @@ async function init() {
     video.addEventListener('pause', () => {
         if (isPlaying) {
             isPlaying = false;
-            playBtn.textContent = '▶';
+            setPlayIcon(false);
             if (animFrameId) cancelAnimationFrame(animFrameId);
         }
     });
@@ -258,7 +276,7 @@ function togglePlay() {
     if (video.paused) {
         video.play().then(() => {
             isPlaying = true;
-            playBtn.textContent = '⏸';
+            setPlayIcon(true);
             animLoop();
         }).catch(err => {
             console.error("Playback error:", err);
@@ -266,7 +284,7 @@ function togglePlay() {
     } else {
         video.pause();
         isPlaying = false;
-        playBtn.textContent = '▶';
+        setPlayIcon(false);
         if (animFrameId) cancelAnimationFrame(animFrameId);
     }
 }
@@ -352,10 +370,10 @@ function setSpeed(speed) {
 
 // ========== Rendering ==========
 function updateHud() {
-    frameCounter.textContent = `Frame: ${currentFrame}`;
+    frameCounter.textContent = `Frame ${currentFrame}`;
     const timeSec = currentFrame / videoInfo.fps;
     currentTimeEl.textContent = formatTime(timeSec);
-    radarTimeEl.textContent = formatTime(timeSec);
+    if (radarTimeEl) radarTimeEl.textContent = formatTime(timeSec);
 }
 
 function updateDisplay() {
@@ -397,7 +415,7 @@ function drawOverlay(frameData, frameIdx = currentFrame) {
         if (showIds && player.tracker_id >= 0) {
             overlayCtx.fillStyle = color;
             overlayCtx.font = 'bold 14px sans-serif';
-            overlayCtx.fillText(isMe ? `★ ME #${player.tracker_id}` : `#${player.tracker_id}`, x1, y1 - 5);
+            overlayCtx.fillText(isMe ? `ME #${player.tracker_id}` : `#${player.tracker_id}`, x1, y1 - 5);
         }
 
         // Foot dot
@@ -495,7 +513,7 @@ function drawRadar(frameData) {
             ctx.fillStyle = isMe ? '#ffd700' : '#fff';
             ctx.font = isMe ? 'bold 11px sans-serif' : 'bold 10px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(isMe ? `★${player.tracker_id}` : `${player.tracker_id}`, cx, cy - (isMe ? 12 : 9));
+            ctx.fillText(isMe ? `${player.tracker_id}` : `${player.tracker_id}`, cx, cy - (isMe ? 12 : 9));
         }
     }
 
@@ -654,7 +672,8 @@ function setupTimelinePins() {
         pin.style.backgroundColor = ev.color;
         const pct = ((ev.start_frame - minF) / span) * 100;
         pin.style.left = `${Math.max(0, Math.min(100, pct))}%`;
-        pin.title = `${ev.label} @ ${ev.timestamp}s (Click to jump 2s prior)`;
+        const who = ev.passer_id ? ` #${ev.passer_id}` : (ev.player_id ? ` #${ev.player_id}` : '');
+        pin.title = `${ev.label}${who}${ev.receiver_id ? ' to #' + ev.receiver_id : ''} · ${ev.timestamp}s`;
 
         pin.onclick = () => {
             const jumpF = Math.max(minF, ev.start_frame - Math.floor(2.0 * videoInfo.fps));
@@ -673,6 +692,17 @@ function renderEventFeed(filterType) {
     const events = telemetryData.events || [];
     const filtered = filterType === 'all' ? events : events.filter(e => e.type === filterType);
 
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+        const f = chip.dataset.f;
+        const n = f === 'all' ? events.length : events.filter(e => e.type === f).length;
+        let c = chip.querySelector('.count');
+        if (!c) { c = document.createElement('span'); c.className = 'count'; chip.appendChild(c); }
+        c.textContent = n;
+    });
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No events of this type</td></tr>';
+        return;
+    }
     filtered.forEach(ev => {
         const row = document.createElement('tr');
         const actor = ev.passer_id ? `#${ev.passer_id}` : (ev.player_id ? `#${ev.player_id}` : '-');
@@ -680,12 +710,12 @@ function renderEventFeed(filterType) {
         const dist = ev.distance_m ? `${ev.distance_m}m` : '-';
 
         row.innerHTML = `
-            <td><strong>${ev.timestamp}s</strong></td>
-            <td><span style="color:${ev.color};font-weight:600;">● ${ev.label}</span></td>
+            <td class="num">${ev.timestamp}s</td>
+            <td><span class="event-type"><span class="dot" style="background:${esc(ev.color)}"></span>${esc(ev.label)}</span></td>
             <td>${actor}</td>
             <td>${target}</td>
             <td>${dist}</td>
-            <td><button class="event-jump-btn" onclick="jumpToEvent(${ev.start_frame})">Seek ▶</button></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="jumpToEvent(${ev.start_frame})" aria-label="Seek to event">Seek</button></td>
         `;
         tbody.appendChild(row);
     });
@@ -710,7 +740,7 @@ let activeHeatmapGrid = null;
 function setupAnalyticsPanel() {
     const sel = document.getElementById('analytics-player-select');
     if (!sel) return;
-    sel.innerHTML = '<option value="all">Match Overview</option>';
+    sel.innerHTML = '<option value="all">Match overview</option>';
 
     const analytics = telemetryData.analytics || {};
     const players = analytics.players || {};
@@ -719,8 +749,9 @@ function setupAnalyticsPanel() {
     Object.keys(players).sort((a,b) => parseInt(a) - parseInt(b)).forEach(tid => {
         const opt = document.createElement('option');
         opt.value = tid;
-        const tname = TEAM_NAMES[players[tid].team_id] ?? 'Other/GK';
-        opt.textContent = `Player #${tid} (Team ${tname})`;
+        const tname = TEAM_NAMES[players[tid].team_id] ?? 'Unassigned';
+        const sim = kitSimilarity(tid);
+        opt.textContent = `#${tid} · ${tname}${sim != null ? ` · ${Math.round(sim * 100)}% kit match` : ''}`;
         sel.appendChild(opt);
     });
 
@@ -731,8 +762,16 @@ function setupAnalyticsPanel() {
 function updatePlayerScorecard(val) {
     const analytics = telemetryData.analytics || {};
     const poss = analytics.possession;
-    document.getElementById('metric-possession').textContent =
-        (poss && poss.team_0 != null) ? `${TEAM_NAMES[0]} ${poss.team_0}% | ${TEAM_NAMES[1]} ${poss.team_1}%` : `n/a (ball seen ${poss?.ball_coverage_pct ?? 0}%)`;
+    const possEl = document.getElementById('metric-possession');
+    if (poss && poss.team_0 != null) {
+        const c0 = `rgb(${TEAM_RGB[0].join(',')})`, c1 = `rgb(${TEAM_RGB[1].join(',')})`;
+        possEl.innerHTML = `<div class="poss-labels"><span class="num">${esc(TEAM_NAMES[0])} ${poss.team_0}%</span><span class="num">${poss.team_1}% ${esc(TEAM_NAMES[1])}</span></div>
+            <div class="poss-bar"><div style="width:${poss.team_0}%;background:${c0}"></div><div style="width:${poss.team_1}%;background:${c1}"></div></div>`;
+    } else {
+        possEl.innerHTML = `<span class="metric-val">n/a</span> <small class="help">ball seen ${poss?.ball_coverage_pct ?? 0}%</small>`;
+    }
+    const kitEl = document.getElementById('metric-kit');
+    const kitTitle = document.getElementById('metric-kit-title');
 
     if (val === 'all') {
         let totalD = 0;
@@ -747,6 +786,9 @@ function updatePlayerScorecard(val) {
         document.getElementById('metric-distance').textContent = `${(totalD / 1000).toFixed(2)} km total`;
         document.getElementById('metric-topspeed').textContent = `${maxSpd.toFixed(1)} km/h`;
         document.getElementById('metric-sprints').textContent = `${totalSp} sprints`;
+        const sims = Object.values(telemetryData?.teams?.kit_similarity || {}).filter(v => v != null);
+        kitTitle.textContent = 'Avg kit match';
+        kitEl.textContent = sims.length ? `${Math.round(100 * sims.reduce((a, b) => a + b, 0) / sims.length)}%` : '-';
         fetchHeatmap('team_1');
     } else {
         const p = (analytics.players || {})[val];
@@ -754,6 +796,9 @@ function updatePlayerScorecard(val) {
             document.getElementById('metric-distance').textContent = `${p.distance_m} m (${p.distance_km} km)`;
             document.getElementById('metric-topspeed').textContent = `${p.top_speed_kmh} km/h`;
             document.getElementById('metric-sprints').textContent = `${p.sprints} sprints`;
+            const sim = kitSimilarity(val);
+            kitTitle.textContent = 'Kit match';
+            kitEl.textContent = sim != null ? `${Math.round(sim * 100)}%` : '-';
             fetchHeatmap(val);
         }
     }
@@ -850,14 +895,14 @@ async function startExport() {
         const data = await resp.json();
         if (data.success) {
             feedback.innerHTML = `
-                ✅ Export complete! (${data.clips_count} plays sliced, ${data.size_mb} MB)<br>
-                <a href="${data.download_url}" download class="btn btn-primary" style="margin-top:0.5rem;display:inline-block;">📥 Download Highlight Reel</a>
+                <span>Export complete: ${data.clips_count} clips, ${data.size_mb} MB</span>
+                <a href="${data.download_url}" download class="btn btn-primary btn-sm">Download reel</a>
             `;
         } else {
-            feedback.textContent = `❌ Export error: ${data.error || 'Failed'}`;
+            feedback.textContent = `Export error: ${data.error || 'Failed'}`;
         }
     } catch (e) {
-        feedback.textContent = `❌ Network error: ${e.message}`;
+        feedback.textContent = `Network error: ${e.message}`;
     } finally {
         btn.disabled = false;
     }

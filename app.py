@@ -250,12 +250,13 @@ async def api_start_processing(request: Request):
     processing_status = {"running": True, "progress": 0, "total": 0, "message": "Starting..."}
 
     # Run in background
-    asyncio.create_task(_run_processing(start_frame, end_frame, device))
+    two_kits = bool(data.get("two_kits_only", False))
+    asyncio.create_task(_run_processing(start_frame, end_frame, device, two_kits))
 
     return {"status": "started"}
 
 
-async def _run_processing(start_frame: int, end_frame: Optional[int], device: str):
+async def _run_processing(start_frame: int, end_frame: Optional[int], device: str, two_kits_only: bool = False):
     """Background task for video processing."""
     global processing_status
 
@@ -277,6 +278,7 @@ async def _run_processing(start_frame: int, end_frame: Optional[int], device: st
                 device=device,
                 imgsz=1280,
                 progress_callback=progress_cb,
+                two_kits_only=two_kits_only,
             )
         )
         processing_status["message"] = (

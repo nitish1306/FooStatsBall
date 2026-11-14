@@ -82,12 +82,14 @@ def torso_kit_lab(frame, bbox, pitch) -> np.ndarray | None:
 
 
 class TeamClassifier:
-    def __init__(self):
+    def __init__(self, two_kits_only: bool = False):
+        self.two_kits_only = two_kits_only  # no ref / distinct GK kit -> everyone is on a team
         self.track_samples = defaultdict(list)
         self.track_team_map: dict[int, int] = {}
         self.track_similarity: dict[int, float] = {}
         self.team_colors = {0: "#ef5350", 1: "#42a5f5", -1: "#bdbdbd"}
         self.team_names = {0: "Team A", 1: "Team B", -1: "Other / GK / Ref"}
+        self.goalkeepers: dict[int, int] = {}
 
     def collect_features_from_video(self, video_path: str, telemetry: dict, max_samples_per_track: int = 40):
         cap = cv2.VideoCapture(video_path)
@@ -126,7 +128,7 @@ class TeamClassifier:
         # Over-cluster (k=2..4), keep the two heaviest clusters as teams; extra clusters are
         # GKs/refs unless they sit close to a team (then they're just a lighting variant of it).
         best = None
-        for k in range(2, min(4, len(tids)) + 1):
+        for k in range(2, (2 if self.two_kits_only else min(4, len(tids))) + 1):
             km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(X, sample_weight=weight)
             mass = np.bincount(km.labels_, weights=weight, minlength=k)
             order = np.argsort(-mass)
@@ -149,7 +151,7 @@ class TeamClassifier:
             sim = float(d_other[i] / (d_own[i] + d_other[i] + 1e-6))  # 0.5 ambiguous .. 1 certain
             far = d_own[i] > max(3.0 * spread[own[i]], 0.4 * sep)
             outlier = (not in_team_cluster[i] and d_own[i] > 0.35 * sep) or far
-            self.track_team_map[t] = -1 if outlier else int(own[i])
+            self.track_team_map[t] = -1 if (outlier and not self.two_kits_only) else int(own[i])
             self.track_similarity[t] = round(sim, 3)
         for t in self.track_samples:
             self.track_team_map.setdefault(t, -1)
@@ -163,7 +165,7 @@ class TeamClassifier:
         if self.team_names[0] == self.team_names[1]:
             self.team_names = {**self.team_names, 0: f"{self.team_names[0]} (dark)", 1: f"{self.team_names[1]} (light)"}
 
-        if telemetry is not None:
+        if telemetry is not None and not self.two_kits_only:
             self.assign_goalkeepers(telemetry, pitch_length)
 
     def assign_goalkeepers(self, telemetry, pitch_length):
