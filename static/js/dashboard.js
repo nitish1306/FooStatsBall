@@ -766,7 +766,8 @@ function updatePlayerScorecard(val) {
     if (poss && poss.team_0 != null) {
         const c0 = `rgb(${TEAM_RGB[0].join(',')})`, c1 = `rgb(${TEAM_RGB[1].join(',')})`;
         possEl.innerHTML = `<div class="poss-labels"><span class="num">${esc(TEAM_NAMES[0])} ${poss.team_0}%</span><span class="num">${poss.team_1}% ${esc(TEAM_NAMES[1])}</span></div>
-            <div class="poss-bar"><div style="width:${poss.team_0}%;background:${c0}"></div><div style="width:${poss.team_1}%;background:${c1}"></div></div>`;
+            <div class="poss-bar"><div style="width:${poss.team_0}%;background:${c0}"></div><div style="width:${poss.team_1}%;background:${c1}"></div></div>`
+            + `<small class="help">Ball seen ${poss.ball_coverage_pct}% of frames, ${(poss.frames_attributed / (telemetryData.video_info?.fps || 30)).toFixed(0)} s attributed${poss.ball_coverage_pct < 50 ? ' · low sample' : ''}</small>`;
     } else {
         possEl.innerHTML = `<span class="metric-val">n/a</span> <small class="help">ball seen ${poss?.ball_coverage_pct ?? 0}%</small>`;
     }

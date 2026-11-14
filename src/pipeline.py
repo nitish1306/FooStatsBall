@@ -145,7 +145,13 @@ def process_video(
     cap.release()
 
     # Global ball path selection (Viterbi over candidates in camera-compensated pixels)
-    chosen = select_ball_path(ball_cands, ball_cands_ref, frame_width=info["width"])
+    def _on_pitch(rx, ry):
+        x, y = (float(v) for v in calibrator.pixel_to_pitch(rx, ry))
+        ok = -touchline_buffer <= x <= pitch_len + touchline_buffer and -touchline_buffer <= y <= pitch_wid + touchline_buffer
+        return (x, y) if ok else None
+    ball_cands_pitch = {f: [_on_pitch(rx, ry) for rx, ry in refs] for f, refs in ball_cands_ref.items()}
+    player_xy = {int(k): [tuple(p["pitch_xy"]) for p in v["players"]] for k, v in raw_frames.items()}
+    chosen = select_ball_path(ball_cands, ball_cands_ref, ball_cands_pitch, fps=fps, player_xy=player_xy)
     for f_idx, ci in chosen.items():
         ball_raw_positions[f_idx] = None
         if ci is None:
@@ -164,8 +170,16 @@ def process_video(
     # Pitch projection interpolates in reference-frame pixels so camera pans don't bend the path.
     interpolated_ref = interpolate_ball_trajectory(
         {k: ball_ref_positions.get(k) for k in ball_raw_positions}, max_gap=45)
+    # Only bridge gaps whose endpoints are physically reachable; otherwise they are two different tracks.
+    det = sorted((f, raw_frames[str(f)]["ball"]["pitch_xy"]) for f in ball_raw_positions if ball_raw_positions[f] is not None)
+    bridgeable = set()
+    for (fa, pa), (fb, pb) in zip(det, det[1:]):
+        if fb - fa > 1 and np.hypot(pb[0] - pa[0], pb[1] - pa[1]) <= 35.0 * (fb - fa) / fps + 0.4:
+            bridgeable.update(range(fa + 1, fb))
     for frame_str, frame_data in raw_frames.items():
         f_idx = int(frame_str)
+        if f_idx not in bridgeable:
+            continue
         if frame_data["ball"] is None and interpolated_ball.get(f_idx) is not None:
             bx, by = interpolated_ball[f_idx]
             if interpolated_ref.get(f_idx) is None:

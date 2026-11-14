@@ -212,6 +212,9 @@ class EventDetector:
             inv_a = stable_intervals[i]
             inv_b = stable_intervals[i + 1]
 
+            if inv_a["player_id"] == inv_b["player_id"]:
+                continue  # same player regains it: not a pass
+
             flight_frames = inv_b["start_frame"] - inv_a["end_frame"]
             flight_time_sec = flight_frames / self.fps
 

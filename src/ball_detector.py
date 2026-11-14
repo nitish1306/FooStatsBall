@@ -41,81 +41,114 @@ class BallDetector:
 def select_ball_path(
     candidates: dict[int, list[tuple[float, float, float]]],
     ref_candidates: dict[int, list[tuple[float, float]]],
-    frame_width: int,
-    max_speed_px_per_frame: float | None = None,
-    miss_cost: float = 0.0,
-    reacquire_cost: float = 1.5,
+    pitch_candidates: dict[int, list[tuple[float, float] | None]],
+    fps: float,
+    player_xy: dict[int, list[tuple[float, float]]] | None = None,
+    max_speed_mps: float = 35.0,
+    slack_m: float = 0.4,
+    max_skip: int = 15,
+    skip_cost: float = 0.12,
+    reacquire_cost: float = 2.5,
     det_weight: float = 2.0,
+    far_from_players_m: float = 10.0,
+    far_cost: float = 0.6,
     min_run: int = 6,
 ) -> dict[int, int | None]:
     """
-    Viterbi over frames. State = candidate index or None (miss).
-    Motion cost uses camera-compensated (reference) pixels.
+    Gated tracker over pitch metres. A detection can follow one seen up to `max_skip` frames
+    earlier only if the implied speed is <= max_speed_mps (+ homography slack), so the track
+    remembers where the ball was through short misses instead of jumping to any white spot.
+    Starting a new track from nothing ("lost") costs `reacquire_cost`.
+    pitch_candidates[f][j] is None for off-pitch candidates (never chosen).
     Returns frame -> chosen candidate index (or None).
     """
     frames = sorted(candidates)
     if not frames:
         return {}
-    vmax = max_speed_px_per_frame or frame_width * 0.06  # ~75px/frame at 1280 ≈ very hard shot near camera
-
+    pos = {f: i for i, f in enumerate(frames)}
+    vmax = max_speed_mps / fps
     static = static_candidate_mask(ref_candidates)
 
-    def det_cost(c):
-        return -det_weight * c  # reward: confident detections pull the path; miss costs 0
+    def unary(f, j):
+        if static[f][j] or pitch_candidates[f][j] is None:
+            return np.inf
+        c = -det_weight * candidates[f][j][2]
+        if player_xy and player_xy.get(f):
+            x, y = pitch_candidates[f][j]
+            if min(np.hypot(x - px, y - py) for px, py in player_xy[f]) > far_from_players_m:
+                c += far_cost
+        return c
 
-    # cost arrays: last element = miss state
-    def cand_cost(f, j):
-        return np.inf if static[f][j] else det_cost(candidates[f][j][2])
-
-    prev_cost = np.array([cand_cost(frames[0], j) for j in range(len(candidates[frames[0]]))] + [miss_cost])
-    back = []
-    for i in range(1, len(frames)):
-        f, fp = frames[i], frames[i - 1]
-        cands, prev_ref = candidates[f], ref_candidates[fp]
-        cur_ref = ref_candidates[f]
-        n_prev, n_cur = len(prev_ref), len(cands)
-        cost = np.full(n_cur + 1, np.inf)
-        ptr = np.zeros(n_cur + 1, dtype=int)
-        gap = f - fp
-        for j in range(n_cur):
-            best, arg = prev_cost[-1] + reacquire_cost, n_prev  # from miss
-            for k in range(n_prev):
-                d = np.hypot(cur_ref[j][0] - prev_ref[k][0], cur_ref[j][1] - prev_ref[k][1]) / gap
-                if d > vmax:
-                    continue
-                v = prev_cost[k] + 0.5 * d / vmax
-                if v < best:
-                    best, arg = v, k
-            cost[j], ptr[j] = best + cand_cost(f, j), arg
-        k = int(np.argmin(prev_cost))
-        cost[-1], ptr[-1] = prev_cost[k] + miss_cost, k
-        back.append(ptr)
-        # normalize to avoid drift
-        prev_cost = cost - cost.min()
-
-    path, run_start = {}, {}
-    state = int(np.argmin(prev_cost))
-    for i in range(len(frames) - 1, -1, -1):
-        f = frames[i]
+    cost: dict[int, np.ndarray] = {}
+    back: dict[int, list] = {}
+    lost = 0.0  # best cost of being "lost" at the current frame
+    lost_hist = []  # (cost, pointer) of lost state per frame index
+    lost_ptr = None
+    for i, f in enumerate(frames):
         n = len(candidates[f])
-        path[f] = state if state < n else None
-        if i > 0:
-            prev_state = int(back[i - 1][state])
-            # a run starts here if we reached this detection from the miss state
-            run_start[f] = path[f] is not None and prev_state >= len(candidates[frames[i - 1]])
-            state = prev_state
-        else:
-            run_start[f] = path[f] is not None
-    # drop short isolated runs: continuous tracks of a real ball last; FP flickers don't
-    run = []
-    for f in frames + [None]:
-        if f is None or path[f] is None or run_start[f]:
-            if 0 < len(run) < min_run:
-                for g in run:
-                    path[g] = None
-            run = []
-        if f is not None and path[f] is not None:
-            run.append(f)
+        c = np.full(n, np.inf)
+        bp = [None] * n
+        for j in range(n):
+            u = unary(f, j)
+            if not np.isfinite(u):
+                continue
+            best, arg = lost + reacquire_cost, ("lost", i)
+            x, y = pitch_candidates[f][j]
+            for ii in range(max(0, i - max_skip), i):
+                fp = frames[ii]
+                gap = f - fp
+                if gap > max_skip:
+                    continue
+                for k, pk in enumerate(pitch_candidates[fp]):
+                    if pk is None or not np.isfinite(cost[fp][k]):
+                        continue
+                    d = np.hypot(x - pk[0], y - pk[1])
+                    if d > vmax * gap + slack_m:
+                        continue
+                    v = cost[fp][k] + skip_cost * (gap - 1) + 0.5 * d / (vmax * gap + slack_m)
+                    if v < best:
+                        best, arg = v, (fp, k)
+            c[j], bp[j] = best + u, arg
+        cost[f], back[f] = c, bp
+        lost_hist.append((lost, lost_ptr))
+        # a track may end here -> lost from the next frame on
+        nxt = (lost, lost_ptr)
+        if n and np.isfinite(c).any():
+            k = int(np.argmin(c))
+            if c[k] < nxt[0]:
+                nxt = (float(c[k]), (f, k))
+        lost, lost_ptr = nxt
+
+    # end: best of lost or any detection in the last max_skip frames
+    end_best, end_arg = lost, ("lost", len(frames) - 1)
+    lf = frames[-1]
+    for fp in frames[max(0, len(frames) - max_skip):]:
+        for k in range(len(cost[fp])):
+            v = cost[fp][k] + skip_cost * (lf - fp)
+            if v < end_best:
+                end_best, end_arg = v, (fp, k)
+
+    path = {f: None for f in frames}
+    runs, run = [], []
+    node = end_arg
+    while node is not None:
+        if node[0] == "lost":
+            if run:
+                runs.append(run)
+                run = []
+            node = lost_hist[node[1]][1]
+            continue
+        fp, k = node
+        path[fp] = k
+        run.append(fp)
+        node = back[fp][k]
+    if run:
+        runs.append(run)
+    # drop short tracks: a real ball persists, flickers don't
+    for r in runs:
+        if len(r) < min_run:
+            for g in r:
+                path[g] = None
     return path
 
 

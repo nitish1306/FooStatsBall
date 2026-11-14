@@ -36,14 +36,20 @@ def _named(rgb) -> str:
     names = list(NAMED_COLORS)
     labs = _lab(list(NAMED_COLORS.values()), bgr=False)
     chroma = np.hypot(lab[1] - 128, lab[2] - 128)
-    if chroma > 18:  # clearly coloured -> don't let white/grey/black win on lightness
-        keep = [i for i, n in enumerate(names) if n not in ("White", "Grey", "Black")]
-        names, labs = [names[i] for i in keep], labs[keep]
-        hue = np.arctan2(lab[2] - 128, lab[1] - 128)
-        hues = np.arctan2(labs[:, 2] - 128, labs[:, 1] - 128)
-        dh = np.abs(np.angle(np.exp(1j * (hues - hue))))  # hue angle diff, robust to washout
-        return names[int(np.argmin(dh + 0.004 * np.abs(labs[:, 0] - lab[0])))]
-    return names[int(np.argmin(np.linalg.norm((labs - lab) * w, axis=1)))]
+    hue = np.degrees(np.arctan2(lab[2] - 128, lab[1] - 128)) % 360
+    greenish = 100 <= hue <= 200  # grass bleeding into a light kit
+    if lab[0] > 150 and (chroma < 20 or (greenish and chroma < 24)):
+        return "White"
+    if chroma <= 18:
+        return "Black" if lab[0] < 60 else ("White" if lab[0] > 170 else "Grey")
+    # dark reds/browns read as maroon (brown kits are rare; washed maroon is common)
+    if lab[0] < 110 and (hue <= 75 or hue >= 340):
+        return "Maroon"
+    keep = [i for i, n in enumerate(names) if n not in ("White", "Grey", "Black")]
+    names, labs = [names[i] for i in keep], labs[keep]
+    hues = np.arctan2(labs[:, 2] - 128, labs[:, 1] - 128)
+    dh = np.abs(np.angle(np.exp(1j * (hues - np.radians(hue)))))  # hue angle diff, robust to washout
+    return names[int(np.argmin(dh + 0.004 * np.abs(labs[:, 0] - lab[0])))]
 
 
 def _display_hex(lab, chroma_boost=1.5) -> str:

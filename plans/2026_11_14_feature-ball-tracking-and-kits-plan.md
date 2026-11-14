@@ -47,3 +47,16 @@ Team classifier: kits are red vs yellow (+ black GK/ref). Rule `R/(G+B)>0.62` sc
 - [x] Event chips with counts, empty state, dot labels, timeline pin tooltips
 - [x] Possession bar, team legend, kit-match % in player select + metric card
 - [x] Browser-verified home/calibrate/dashboard (no console errors after fix)
+
+## Phase: Gated ball tracker + kit/event fixes
+- [x] `select_ball_path` in pitch metres: 35 m/s gate (+0.4 m slack), memory across ≤15-frame misses, off-pitch cands rejected, >10 m from all players penalised, reacquire cost from lost state
+- [x] Interpolation only bridges gaps whose endpoints are reachable at ≤35 m/s
+- [x] Kit naming: light + low chroma / grass-tinted → White; dark red/brown → Maroon
+- [x] No self-passes (same player before/after flight)
+- [x] Possession card shows ball coverage + "low sample" when <50%
+- Fixedcam (f1109–2008): White/Maroon (was Grey/Orange); 0 self-passes; ball 29% coverage, 0 >120 km/h; possession 95.9/4.1 = tiny sample (10 s), not team bug
+- Veo: coverage 86%, >120 km/h steps 78→46, possession 70.5/29.5 (was 54.5/45.5), 8 interceptions (was 3)
+
+## Unresolved
+- Fixedcam ball coverage 29%: YOLO misses ball (wide fisheye). Try football-ball model?
+- Veo possession shift 54→70: which correct? need labels
