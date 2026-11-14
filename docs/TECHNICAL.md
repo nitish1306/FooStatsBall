@@ -42,9 +42,11 @@ Static mode in `static/js/dashboard.js`:
   1. Pick events with the same presets as the server.
   2. Take each event window ±2 s.
   3. Find the HLS segments that cover those windows.
-  4. Join `init.mp4` and those `.m4s` segments into a Blob and download it as `.mp4`.
+  4. Join `init.mp4` and those `.m4s` segments into a Blob `.mp4`. `rebaseFragment` rewrites each track's `tfdt` so the reel runs from 0 with no gaps, and drops `sidx`.
+  5. Download link, plus a Share / Save button (`navigator.share` with a File) where supported, e.g. iOS.
 
-  Cuts snap to 4 s segment edges, and the reel keeps the source timestamps (some players show a start offset).
+  Cuts snap to 4 s segment edges.
+- **Layout:** desktop ≥1100 px fixed-height grid; 768–1099 px page scrolls, video + radar side by side; <768 px single column (video → timeline → radar → events → analytics), toggles in a swipeable row, export as a bottom sheet.
 
 ## R2 auth
 - S3 endpoint: `https://<account_id>.r2.cloudflarestorage.com`.

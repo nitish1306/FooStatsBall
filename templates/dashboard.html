@@ -23,11 +23,11 @@
                 <label class="switch" title="Ball trail"><input type="checkbox" id="toggle-ball-trail" checked><span>Ball trail</span></label>
                 <label class="switch" title="Space control (Voronoi)"><input type="checkbox" id="toggle-voronoi"><span>Space control</span></label>
                 <label class="switch" title="Heatmap"><input type="checkbox" id="toggle-heatmap"><span>Heatmap</span></label>
-                <button class="btn btn-outline btn-sm" onclick="openExportModal()">
-                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
-                    Export
-                </button>
             </div>
+            <button class="btn btn-outline btn-sm export-btn" onclick="openExportModal()">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+                Export
+            </button>
         </div>
     </header>
 
@@ -148,7 +148,7 @@
         <div class="card modal-card" role="dialog" aria-labelledby="export-title">
             <div>
                 <h3 class="card-title" id="export-title">Export highlight reel</h3>
-                <p class="card-desc" style="margin-top:0.5rem;">Slice and join key moments with local FFmpeg.</p>
+                <p class="card-desc" style="margin-top:0.5rem;">Joins the key moments into one video you can save or share.</p>
             </div>
             <div class="field">
                 <label class="label" for="export-preset">Preset</label>

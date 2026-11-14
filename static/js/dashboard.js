@@ -287,8 +287,8 @@ function setupRadar() {
     // Set radar canvas size (maintain pitch aspect ratio)
     const pitch = telemetryData.pitch || { length: 90, width: 45 };
     const parent = radarCanvas.parentElement;
-    const maxW = Math.max(parent.clientWidth - 20, 300);
-    const maxH = Math.max(parent.clientHeight - 20, 200);
+    const maxW = Math.max(parent.clientWidth - 20, 160);
+    const maxH = Math.max(parent.clientHeight - 20, 80);
     const aspect = pitch.length / pitch.width;
 
     let w, h;
@@ -1026,17 +1026,72 @@ async function exportStaticReel(preset, feedback) {
     }
     const idxs = [...wanted].sort((x, y) => x - y);
     const parts = [await (await fetch(`${base}init.mp4`)).arrayBuffer()];
+    const clock = {};
     for (let i = 0; i < idxs.length; i++) {
         feedback.textContent = `Downloading clip ${i + 1}/${idxs.length}...`;
         const r = await fetch(base + segs[idxs[i]].uri);
         if (!r.ok) throw new Error(`segment ${segs[idxs[i]].uri}: ${r.status}`);
-        parts.push(await r.arrayBuffer());
+        parts.push(rebaseFragment(await r.arrayBuffer(), clock));
     }
     const blob = new Blob(parts, { type: 'video/mp4' });
-    const url = URL.createObjectURL(blob);
     const name = `${MATCH_SLUG}_${preset}${myPlayerTrackId != null && preset === 'my_touches' ? '_p' + myPlayerTrackId : ''}.mp4`;
+    const file = new File([blob], name, { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
     feedback.innerHTML = `<span>Reel ready: ${events.length} events, ${(blob.size / 1e6).toFixed(1)} MB</span>
-        <a href="${url}" download="${name}" class="btn btn-primary btn-sm">Download reel</a>`;
+        <div class="export-links"><a href="${url}" download="${name}" class="btn btn-primary btn-sm">Download</a></div>`;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        const share = document.createElement('button');
+        share.className = 'btn btn-outline btn-sm';
+        share.textContent = 'Share / Save';
+        share.onclick = () => navigator.share({ files: [file], title: name }).catch(() => {});
+        feedback.querySelector('.export-links').appendChild(share);
+    }
+}
+
+// Rewrites tfdt per track so joined fMP4 segments play from 0 with no gaps; drops sidx (absolute times).
+function rebaseFragment(buf, clock) {
+    const dv = new DataView(buf), out = [];
+    const box = (o) => [dv.getUint32(o), String.fromCharCode(...new Uint8Array(buf, o + 4, 4))];
+    for (let o = 0; o < buf.byteLength;) {
+        const [size, type] = box(o);
+        if (type !== 'sidx') out.push(new Uint8Array(buf, o, size));
+        if (type === 'moof') {
+            for (let t = o + 8; t < o + size;) {
+                const [ts, tt] = box(t);
+                if (tt === 'traf') rebaseTraf(dv, box, t + 8, t + ts, clock);
+                t += ts;
+            }
+        }
+        o += size;
+    }
+    return new Blob(out);
+}
+
+function rebaseTraf(dv, box, o, end, clock) {
+    let track = 0, defDur = 0, tfdtAt = -1, tfdtV = 0, total = 0;
+    for (; o < end;) {
+        const [size, type] = box(o);
+        const flags = dv.getUint32(o + 8) & 0xffffff, v = dv.getUint8(o + 8);
+        if (type === 'tfhd') {
+            track = dv.getUint32(o + 12);
+            let p = o + 16;
+            if (flags & 0x1) p += 8;
+            if (flags & 0x2) p += 4;
+            if (flags & 0x8) defDur = dv.getUint32(p);
+        } else if (type === 'tfdt') { tfdtAt = o + 12; tfdtV = v; }
+        else if (type === 'trun') {
+            const n = dv.getUint32(o + 12);
+            let p = o + 16 + (flags & 0x1 ? 4 : 0) + (flags & 0x4 ? 4 : 0);
+            const stride = [0x100, 0x200, 0x400, 0x800].reduce((a, f) => a + (flags & f ? 4 : 0), 0);
+            for (let i = 0; i < n; i++, p += stride) total += flags & 0x100 ? dv.getUint32(p) : defDur;
+        }
+        o += size;
+    }
+    if (tfdtAt < 0) return;
+    const t = clock[track] || 0;
+    if (tfdtV === 1) { dv.setUint32(tfdtAt, Math.floor(t / 2 ** 32)); dv.setUint32(tfdtAt + 4, t >>> 0); }
+    else dv.setUint32(tfdtAt, t);
+    clock[track] = t + total;
 }
 
 // Handle window resize
